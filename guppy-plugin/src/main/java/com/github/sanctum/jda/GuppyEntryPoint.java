@@ -2,13 +2,13 @@ package com.github.sanctum.jda;
 
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
+import com.github.sanctum.jda.common.EmbeddedMessage;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.GuppyConfigurable;
 import com.github.sanctum.jda.common.JDAController;
 import com.github.sanctum.jda.common.Reaction;
 import com.github.sanctum.jda.common.Role;
 import com.github.sanctum.jda.event.GuppyMessageReactEvent;
-import com.github.sanctum.jda.listener.ExampleCommand;
 import com.github.sanctum.jda.listener.GuppyCommandProcessor;
 import com.github.sanctum.jda.listener.GuppyListenerAdapter;
 import com.github.sanctum.jda.loading.DockingAgent;
@@ -50,10 +50,13 @@ import java.util.logging.Logger;
 import java.util.stream.Stream;
 import javax.security.auth.login.LoginException;
 import javax.swing.*;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.MessageBuilder;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.User;
@@ -179,6 +182,22 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public Deployable<Guppy.Message> sendMessage(@NotNull String m) {
 						return GuppyEntryPoint.newDeployable(() -> newMessage(message.getChannel().sendMessage(m).submit().join()));
+					}
+
+					@Override
+					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+						return GuppyEntryPoint.newDeployable(() -> {
+							EmbedBuilder builder = new EmbedBuilder();
+							if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+							if (m.getHeader() != null) builder.setTitle(m.getHeader());
+							if (m.getFooter() != null) builder.setFooter(m.getFooter());
+							if (m.getColor() != null) builder.setColor(m.getColor());
+							if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+							if (m.getDescription() != null) builder.setDescription(m.getDescription());
+							if (m.getImage() != null) builder.setImage(m.getImage());
+							message.getChannel().sendMessageEmbeds(builder.build()).queue();
+							return m;
+						});
 					}
 				};
 			}
@@ -348,6 +367,22 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
 						return newDeployable(() -> newMessage(threadChannel.sendMessage(message).submit().join()));
+					}
+
+					@Override
+					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+						return newDeployable(() -> {
+							EmbedBuilder builder = new EmbedBuilder();
+							if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+							if (m.getHeader() != null) builder.setTitle(m.getHeader());
+							if (m.getFooter() != null) builder.setFooter(m.getFooter());
+							if (m.getColor() != null) builder.setColor(m.getColor());
+							if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+							if (m.getDescription() != null) builder.setDescription(m.getDescription());
+							if (m.getImage() != null) builder.setImage(m.getImage());
+							threadChannel.sendMessageEmbeds(builder.build()).queue();
+							return m;
+						});
 					}
 				}).collect(PantherCollectors.toImmutableList());
 			}
@@ -617,6 +652,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 		@Override
 		public @NotNull Vent.Host getHost() {
 			return GuppyEntryPoint.this;
+		}
+
+		@Override
+		public @NotNull <T> Deployable<T> newDeployable(Supplier<T> supplier) {
+			return GuppyEntryPoint.newDeployable(supplier);
 		}
 
 	}

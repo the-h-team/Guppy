@@ -4,6 +4,7 @@ import com.github.sanctum.jda.GuppyAPI;
 import com.github.sanctum.jda.GuppyEntryPoint;
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
+import com.github.sanctum.jda.common.EmbeddedMessage;
 import com.github.sanctum.jda.common.EphemeralResponse;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.Reaction;
@@ -19,6 +20,7 @@ import com.github.sanctum.panther.util.TypeAdapter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.entities.ChannelType;
 import net.dv8tion.jda.api.entities.Message;
@@ -94,6 +96,22 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 							return GuppyEntryPoint.newDeployable(() -> {
 								e.getPrivateChannel().sendMessage(message).queue();
 								return null;
+							});
+						}
+
+						@Override
+						public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+							return GuppyEntryPoint.newDeployable(() -> {
+								EmbedBuilder builder = new EmbedBuilder();
+								if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+								if (m.getHeader() != null) builder.setTitle(m.getHeader());
+								if (m.getFooter() != null) builder.setFooter(m.getFooter());
+								if (m.getColor() != null) builder.setColor(m.getColor());
+								if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+								if (m.getDescription() != null) builder.setDescription(m.getDescription());
+								if (m.getImage() != null) builder.setImage(m.getImage());
+								message.getChannel().sendMessageEmbeds(builder.build()).queue();
+								return m;
 							});
 						}
 					};
@@ -198,6 +216,22 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 								return null;
 							});
 						}
+
+						@Override
+						public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+							return GuppyEntryPoint.newDeployable(() -> {
+								EmbedBuilder builder = new EmbedBuilder();
+								if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+								if (m.getHeader() != null) builder.setTitle(m.getHeader());
+								if (m.getFooter() != null) builder.setFooter(m.getFooter());
+								if (m.getColor() != null) builder.setColor(m.getColor());
+								if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+								if (m.getDescription() != null) builder.setDescription(m.getDescription());
+								if (m.getImage() != null) builder.setImage(m.getImage());
+								message.getChannel().sendMessageEmbeds(builder.build()).queue();
+								return m;
+							});
+						}
 					};
 				}
 
@@ -296,6 +330,22 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 								return GuppyEntryPoint.newDeployable(() -> {
 									e.getPrivateChannel().sendMessage(message).queue();
 									return null;
+								});
+							}
+
+							@Override
+							public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+								return GuppyEntryPoint.newDeployable(() -> {
+									EmbedBuilder builder = new EmbedBuilder();
+									if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+									if (m.getHeader() != null) builder.setTitle(m.getHeader());
+									if (m.getFooter() != null) builder.setFooter(m.getFooter());
+									if (m.getColor() != null) builder.setColor(m.getColor());
+									if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+									if (m.getDescription() != null) builder.setDescription(m.getDescription());
+									if (m.getImage() != null) builder.setImage(m.getImage());
+									message.getChannel().sendMessageEmbeds(builder.build()).queue();
+									return m;
 								});
 							}
 						};

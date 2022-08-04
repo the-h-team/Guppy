@@ -12,6 +12,7 @@ import com.github.sanctum.panther.file.Configurable;
 import com.github.sanctum.panther.recursive.Service;
 import com.github.sanctum.panther.recursive.ServiceFactory;
 import com.github.sanctum.panther.util.Deployable;
+import java.util.function.Supplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -126,5 +127,7 @@ public interface GuppyAPI extends Service {
 	 * @return
 	 */
 	@NotNull Vent.Host getHost();
+
+	@NotNull <T> Deployable<T> newDeployable(Supplier<T> supplier);
 
 }
