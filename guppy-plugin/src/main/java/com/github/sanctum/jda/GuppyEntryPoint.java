@@ -8,7 +8,6 @@ import com.github.sanctum.jda.common.GuppyConfigurable;
 import com.github.sanctum.jda.common.JDAController;
 import com.github.sanctum.jda.common.Reaction;
 import com.github.sanctum.jda.common.Role;
-import com.github.sanctum.jda.event.GuppyMessageReactEvent;
 import com.github.sanctum.jda.listener.GuppyCommandProcessor;
 import com.github.sanctum.jda.listener.GuppyListenerAdapter;
 import com.github.sanctum.jda.loading.DockingAgent;
@@ -26,12 +25,12 @@ import com.github.sanctum.panther.container.PantherCollectors;
 import com.github.sanctum.panther.container.PantherEntryMap;
 import com.github.sanctum.panther.container.PantherList;
 import com.github.sanctum.panther.container.PantherMap;
-import com.github.sanctum.panther.event.Subscribe;
 import com.github.sanctum.panther.event.Vent;
 import com.github.sanctum.panther.event.VentMap;
 import com.github.sanctum.panther.file.Configurable;
 import com.github.sanctum.panther.file.JsonConfiguration;
 import com.github.sanctum.panther.recursive.ServiceFactory;
+import com.github.sanctum.panther.util.Check;
 import com.github.sanctum.panther.util.Deployable;
 import com.github.sanctum.panther.util.DeployableMapping;
 import com.github.sanctum.panther.util.PantherLogger;
@@ -39,6 +38,7 @@ import com.github.sanctum.panther.util.SimpleAsynchronousTask;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -53,8 +53,10 @@ import javax.swing.*;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.MessageBuilder;
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageReaction;
@@ -167,6 +169,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
+					public void delete() {
+						message.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+					}
+
+					@Override
 					public @NotNull String getName() {
 						return message.getChannel().getName();
 					}
@@ -223,7 +230,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			public @NotNull EmbeddedMessage[] getAttached() {
 				return message.getEmbeds().stream().map(m -> {
 					EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-					if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+					if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 					if (m.getTitle() != null) builder.setHeader(m.getTitle());
 					if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 					if (m.getColor() != null) builder.setColor(m.getColor());
@@ -387,6 +394,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
+					public void delete() {
+						threadChannel.delete().queueAfter(2, TimeUnit.MILLISECONDS);
+					}
+
+					@Override
 					public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
 						return newDeployable(() -> newMessage(threadChannel.sendMessage(message).submit().join()));
 					}
@@ -427,6 +439,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public boolean isPrivate() {
 				return false;
+			}
+
+			@Override
+			public void delete() {
+				t.delete().queueAfter(2, TimeUnit.MILLISECONDS);
 			}
 
 			@Override
@@ -497,6 +514,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public long count() {
 				return reaction.getCount();
+			}
+
+			@Override
+			public void remove(@NotNull Guppy guppy) {
+				reaction.removeReaction(entryPoint.getJDA().getUserById(guppy.getId())).queueAfter(2, TimeUnit.MILLISECONDS);
+			}
+
+			@Override
+			public @NotNull Guppy[] getGuppies() {
+				return reaction.retrieveUsers().stream().map(entryPoint::getGuppy).toArray(Guppy[]::new);
 			}
 		};
 	}
@@ -625,6 +652,46 @@ public final class GuppyEntryPoint implements Vent.Host {
 		@Override
 		public @Nullable Channel getChannel(long id) {
 			return getChannels().stream().filter(c -> c.getId() == id).findFirst().orElse(null);
+		}
+
+		@Override
+		public @NotNull Channel newChannel(@NotNull String name, long categoryId) {
+			Channel test = getChannel(name);
+			if (test != null) return test;
+			Guild guild = getJDA().getGuildById(570063954118836245L);
+			if (categoryId > 0) {
+				guild.createTextChannel(name, getJDA().getCategoryById(categoryId)).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.queue();
+			} else {
+				guild.createTextChannel(name).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.queue();
+			}
+			return getChannel(name);
+		}
+
+		public void memberInitialize(Guild guild, User user, String name, long categoryId) {
+			Member member = guild.getMember(user);
+			if (categoryId > 0) {
+				guild.createTextChannel(name, getJDA().getCategoryById(categoryId))
+						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
+						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.queue();
+			} else {
+				guild.createTextChannel(name)
+						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
+						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.queue();
+			}
+		}
+
+		@Override
+		public @NotNull Channel newChannel(@NotNull Guppy guppy, @NotNull String name, long categoryId) {
+			Channel test = getChannel(name);
+			if (test != null) return test;
+			User match = getJDA().getUserById(guppy.getId());
+			Guild guild = getJDA().getGuildById(570063954118836245L);
+			memberInitialize(guild, match, name, categoryId);
+			return getChannel(name);
 		}
 
 		@Override

@@ -12,6 +12,7 @@ import com.github.sanctum.panther.file.Configurable;
 import com.github.sanctum.panther.recursive.Service;
 import com.github.sanctum.panther.recursive.ServiceFactory;
 import com.github.sanctum.panther.util.Deployable;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,7 +20,7 @@ import org.jetbrains.annotations.Nullable;
 public interface GuppyAPI extends Service {
 
 	static @NotNull GuppyAPI getInstance() {
-		return ServiceFactory.getInstance().getService(GuppyAPI.class);
+		return Optional.ofNullable(ServiceFactory.getInstance().getService(GuppyAPI.class)).orElseThrow(RuntimeException::new);
 	}
 
 	/**
@@ -59,23 +60,44 @@ public interface GuppyAPI extends Service {
 	@Nullable Channel getChannel(long id);
 
 	/**
+	 * @param name
+	 * @param categoryId
 	 * @return
+	 */
+	@NotNull Channel newChannel(@NotNull String name, long categoryId);
+
+	/**
+	 * @param guppy
+	 * @param name
+	 * @param categoryId
+	 * @return
+	 */
+	@NotNull Channel newChannel(@NotNull Guppy guppy, @NotNull String name, long categoryId);
+
+
+
+	/**
+	 * Get all known channels.
+	 *
+	 * @return A collection of channels.
 	 */
 	@NotNull PantherCollection<Channel> getChannels();
 
 	/**
-	 * @param label
-	 * @return
+	 * Get a command by its label.
+	 *
+	 * @param label The name of the command.
+	 * @return A command if found or null.
 	 */
 	@Nullable Command getCommand(@NotNull String label);
 
 	/**
-	 * @return
+	 * @return a collection of registered commands.
 	 */
 	@NotNull PantherCollection<Command> getCommands();
 
 	/**
-	 * @return
+	 * @return a deployable sequence that refreshes the command map.
 	 */
 	@NotNull Deployable<Void> updateCommands();
 
@@ -128,6 +150,11 @@ public interface GuppyAPI extends Service {
 	 */
 	@NotNull Vent.Host getHost();
 
+	/**
+	 * @param supplier
+	 * @param <T>
+	 * @return
+	 */
 	@NotNull <T> Deployable<T> newDeployable(Supplier<T> supplier);
 
 }

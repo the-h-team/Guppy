@@ -1,6 +1,7 @@
 package com.github.sanctum.jda.common;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 @FunctionalInterface
 public interface EphemeralResponse {
@@ -8,6 +9,10 @@ public interface EphemeralResponse {
 	EphemeralResponse EMPTY = () -> "";
 
 	@NotNull String get();
+
+	default @Nullable EmbeddedMessage getExtra() {
+		return null;
+	}
 
 	default @NotNull EphemeralResponse setNegated(boolean negated) {
 		return this;

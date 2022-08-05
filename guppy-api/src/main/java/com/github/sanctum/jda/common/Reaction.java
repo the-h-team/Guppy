@@ -9,6 +9,10 @@ public interface Reaction {
 
 	long count();
 
+	void remove(@NotNull Guppy guppy);
+
+	@NotNull Guppy[] getGuppies();
+
 	static @NotNull Reaction of(@See({String.class, Emoji.class}) @NotNull Object emoji) {
 		return new Reaction() {
 			@Override
@@ -19,6 +23,16 @@ public interface Reaction {
 			@Override
 			public long count() {
 				return 0;
+			}
+
+			@Override
+			public void remove(@NotNull Guppy guppy) {
+
+			}
+
+			@Override
+			public @NotNull Guppy[] getGuppies() {
+				return new Guppy[0];
 			}
 		};
 	}
@@ -33,6 +47,16 @@ public interface Reaction {
 			@Override
 			public long count() {
 				return initial;
+			}
+
+			@Override
+			public void remove(@NotNull Guppy guppy) {
+
+			}
+
+			@Override
+			public @NotNull Guppy[] getGuppies() {
+				return new Guppy[0];
 			}
 		};
 	}

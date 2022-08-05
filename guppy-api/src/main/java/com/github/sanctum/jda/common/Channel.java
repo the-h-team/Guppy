@@ -17,6 +17,8 @@ public interface Channel extends Identifiable, Mailable {
 
 	boolean isPrivate();
 
+	void delete();
+
 	interface Thread extends Identifiable, Mailable {
 
 		boolean isOwned();
@@ -24,6 +26,8 @@ public interface Channel extends Identifiable, Mailable {
 		@Nullable Guppy getOwner();
 
 		@NotNull Channel getParent();
+
+		void delete();
 
 	}
 

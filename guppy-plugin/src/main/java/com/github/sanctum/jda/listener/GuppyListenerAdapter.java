@@ -89,6 +89,11 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 						}
 
 						@Override
+						public void delete() {
+							e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+						}
+
+						@Override
 						public @NotNull String getName() {
 							return e.getPrivateChannel().getName();
 						}
@@ -148,7 +153,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				public @NotNull EmbeddedMessage[] getAttached() {
 					return message.getEmbeds().stream().map(m -> {
 						EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 						if (m.getTitle() != null) builder.setHeader(m.getTitle());
 						if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 						if (m.getColor() != null) builder.setColor(m.getColor());
@@ -237,6 +242,11 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 						}
 
 						@Override
+						public void delete() {
+							e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+						}
+
+						@Override
 						public @NotNull String getName() {
 							return e.getPrivateChannel().getName();
 						}
@@ -296,7 +306,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				public @NotNull EmbeddedMessage[] getAttached() {
 					return message.getEmbeds().stream().map(m -> {
 						EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 						if (m.getTitle() != null) builder.setHeader(m.getTitle());
 						if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 						if (m.getColor() != null) builder.setColor(m.getColor());
@@ -384,6 +394,11 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 							}
 
 							@Override
+							public void delete() {
+								e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+							}
+
+							@Override
 							public @NotNull String getName() {
 								return e.getPrivateChannel().getName();
 							}
@@ -443,7 +458,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 					public @NotNull EmbeddedMessage[] getAttached() {
 						return message.getEmbeds().stream().map(m -> {
 							EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-							if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+							if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 							if (m.getTitle() != null) builder.setHeader(m.getTitle());
 							if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 							if (m.getColor() != null) builder.setColor(m.getColor());
@@ -518,7 +533,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				public @NotNull EmbeddedMessage[] getAttached() {
 					return message.getEmbeds().stream().map(m -> {
 						EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+						if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 						if (m.getTitle() != null) builder.setHeader(m.getTitle());
 						if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 						if (m.getColor() != null) builder.setColor(m.getColor());
@@ -633,7 +648,35 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				EphemeralResponse response = test.onExecuted(entryPoint.getGuppy(e.getUser()), variable);
 				if (response.isNegated()) {
 					e.deferReply().queue();
-					e.getHook().sendMessage(response.get().isEmpty() ? "***No info to display.***" : response.get()).queue();
+					if (response.getExtra() != null) {
+						EmbeddedMessage m = response.getExtra();
+						EmbedBuilder builder = new EmbedBuilder();
+						if (m.getAuthor() != null) {
+							builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+						}
+						if (m.getHeader() != null) builder.setTitle(m.getHeader());
+						if (m.getFooter() != null) {
+							if (m.getFooter().getIconUrl() != null) {
+								builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+							} else {
+								builder.setFooter(m.getFooter().getText());
+							}
+						}
+						if (m.getColor() != null) builder.setColor(m.getColor());
+						if (m.getThumbnail() != null) {
+							builder.setThumbnail(m.getThumbnail().getUrl());
+						}
+						if (m.getDescription() != null) builder.setDescription(m.getDescription());
+						if (m.getImage() != null) {
+							builder.setImage(m.getImage().getUrl());
+						}
+						for (EmbeddedMessage.Field f : m.getFields()) {
+							builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+						}
+						e.getHook().sendMessageEmbeds(builder.build()).queue();
+					} else {
+						e.getHook().sendMessage(response.get().isEmpty() ? "***No info to display.***" : response.get()).queue();
+					}
 				} else {
 					e.reply(response.get()).setEphemeral(true).queue();
 				}
@@ -666,7 +709,35 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				});
 				if (response.isNegated()) {
 					e.deferReply().queue();
-					e.getHook().sendMessage(response.get()).queue();
+					if (response.getExtra() != null) {
+						EmbeddedMessage m = response.getExtra();
+						EmbedBuilder builder = new EmbedBuilder();
+						if (m.getAuthor() != null) {
+							builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+						}
+						if (m.getHeader() != null) builder.setTitle(m.getHeader());
+						if (m.getFooter() != null) {
+							if (m.getFooter().getIconUrl() != null) {
+								builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+							} else {
+								builder.setFooter(m.getFooter().getText());
+							}
+						}
+						if (m.getColor() != null) builder.setColor(m.getColor());
+						if (m.getThumbnail() != null) {
+							builder.setThumbnail(m.getThumbnail().getUrl());
+						}
+						if (m.getDescription() != null) builder.setDescription(m.getDescription());
+						if (m.getImage() != null) {
+							builder.setImage(m.getImage().getUrl());
+						}
+						for (EmbeddedMessage.Field f : m.getFields()) {
+							builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+						}
+						e.getHook().sendMessageEmbeds(builder.build()).queue();
+					} else {
+						e.getHook().sendMessage(response.get()).queue();
+					}
 				} else {
 					e.reply(response.get()).setEphemeral(true).queue();
 				}
