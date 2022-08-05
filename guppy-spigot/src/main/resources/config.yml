@@ -7,7 +7,7 @@
 #--------------------------------------------------------------------------------------
 # Provide the unique token for your bot from the discord developer portal.
 # Make sure you have activated privileged intents & allowed scopes applications.commands and bot.
-token: '{your=token}'
+token: '{TOKEN}'
 #
 # The estimated size of your discord server. Used to determine member caching responsibility.
 estimated-size: 200

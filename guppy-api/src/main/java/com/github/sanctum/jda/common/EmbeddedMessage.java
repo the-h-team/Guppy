@@ -10,15 +10,15 @@ public interface EmbeddedMessage {
 
 	@Nullable Color getColor();
 
-	@Nullable String getImage();
+	@Nullable Image getImage();
 
-	@Nullable String getThumbnail();
+	@Nullable Thumbnail getThumbnail();
 
 	@Nullable String getDescription();
 
 	@Nullable Guppy getAuthor();
 
-	@Nullable String getFooter();
+	@Nullable Footer getFooter();
 
 	@NotNull Field[] getFields();
 
@@ -49,8 +49,28 @@ public interface EmbeddedMessage {
 
 	}
 
+	interface Footer {
+
+		@Nullable String getIconUrl();
+
+		@NotNull String getText();
+
+	}
+
+	interface Thumbnail {
+
+		@NotNull String getUrl();
+
+	}
+
+	interface Image {
+
+		@NotNull String getUrl();
+
+	}
+
 	class Builder {
-		String header, footer, description, imageUrl, thumbnailUrl;
+		String header, footer, footerUrl, description, imageUrl, thumbnailUrl;
 		Color color;
 		Guppy author;
 		Field[] fields;
@@ -85,6 +105,11 @@ public interface EmbeddedMessage {
 			return this;
 		}
 
+		public Builder setFooterImage(@NotNull String url) {
+			this.footerUrl = url;
+			return this;
+		}
+
 		public Builder setAuthor(@NotNull Guppy guppy) {
 			this.author = guppy;
 			return this;
@@ -108,13 +133,13 @@ public interface EmbeddedMessage {
 				}
 
 				@Override
-				public @Nullable String getImage() {
-					return imageUrl;
+				public @Nullable Image getImage() {
+					return imageUrl != null ? () -> imageUrl : null;
 				}
 
 				@Override
-				public @Nullable String getThumbnail() {
-					return thumbnailUrl;
+				public @Nullable Thumbnail getThumbnail() {
+					return thumbnailUrl != null ? () -> thumbnailUrl : null;
 				}
 
 				@Override
@@ -128,8 +153,18 @@ public interface EmbeddedMessage {
 				}
 
 				@Override
-				public @Nullable String getFooter() {
-					return footer;
+				public @Nullable Footer getFooter() {
+					return footer != null ? new Footer() {
+						@Override
+						public @Nullable String getIconUrl() {
+							return footerUrl;
+						}
+
+						@Override
+						public @NotNull String getText() {
+							return footer;
+						}
+					} : null;
 				}
 
 				@Override

@@ -32,6 +32,8 @@ public interface Guppy extends Identifiable, Mailable {
 
 		@NotNull Reaction[] getReactions();
 
+		@NotNull EmbeddedMessage[] getAttached();
+
 		@Nullable Reaction getReaction(@NotNull String code);
 
 		void add(@NotNull Reaction reaction);
@@ -42,6 +44,10 @@ public interface Guppy extends Identifiable, Mailable {
 
 		default boolean isFromThread() {
 			return getThread() != null;
+		}
+
+		default boolean isEmbedded() {
+			return getAttached().length > 0;
 		}
 
 	}

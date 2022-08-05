@@ -126,14 +126,6 @@ public final class GuppyEntryPoint implements Vent.Host {
 		commandSupplier = ImmutablePantherCollection.builder();
 	}
 
-	@Subscribe
-	public void onMessageReact(GuppyMessageReactEvent e) {
-		if (e.getResult() == GuppyMessageReactEvent.ReactionResult.ADD) {
-			e.getGuppy().sendMessage("Looks like you clicked on reaction ```" + e.getReaction().get() + "```" + " with the count of " + e.getReaction().count()).queue();
-			e.setCancelled(true);
-		}
-	}
-
 	@NotNull
 	public JDA getJDA() {
 		return jda;
@@ -188,13 +180,28 @@ public final class GuppyEntryPoint implements Vent.Host {
 					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
 						return GuppyEntryPoint.newDeployable(() -> {
 							EmbedBuilder builder = new EmbedBuilder();
-							if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+							if (m.getAuthor() != null) {
+								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+							}
 							if (m.getHeader() != null) builder.setTitle(m.getHeader());
-							if (m.getFooter() != null) builder.setFooter(m.getFooter());
+							if (m.getFooter() != null) {
+								if (m.getFooter().getIconUrl() != null) {
+									builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+								} else {
+									builder.setFooter(m.getFooter().getText());
+								}
+							}
 							if (m.getColor() != null) builder.setColor(m.getColor());
-							if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+							if (m.getThumbnail() != null) {
+								builder.setThumbnail(m.getThumbnail().getUrl());
+							}
 							if (m.getDescription() != null) builder.setDescription(m.getDescription());
-							if (m.getImage() != null) builder.setImage(m.getImage());
+							if (m.getImage() != null) {
+								builder.setImage(m.getImage().getUrl());
+							}
+							for (EmbeddedMessage.Field f : m.getFields()) {
+								builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+							}
 							message.getChannel().sendMessageEmbeds(builder.build()).queue();
 							return m;
 						});
@@ -210,6 +217,21 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull Reaction[] getReactions() {
 				return message.getReactions().stream().map(entryPoint::newReaction).toArray(Reaction[]::new);
+			}
+
+			@Override
+			public @NotNull EmbeddedMessage[] getAttached() {
+				return message.getEmbeds().stream().map(m -> {
+					EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
+					if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName(), false));
+					if (m.getTitle() != null) builder.setHeader(m.getTitle());
+					if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
+					if (m.getColor() != null) builder.setColor(m.getColor());
+					if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail().getUrl());
+					if (m.getDescription() != null) builder.setDescription(m.getDescription());
+					if (m.getImage() != null) builder.setImage(m.getImage().getUrl());
+					return builder.build();
+				}).toArray(EmbeddedMessage[]::new);
 			}
 
 			@Override
@@ -373,13 +395,28 @@ public final class GuppyEntryPoint implements Vent.Host {
 					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
 						return newDeployable(() -> {
 							EmbedBuilder builder = new EmbedBuilder();
-							if (m.getAuthor() != null) builder.setAuthor(m.getAuthor().getName());
+							if (m.getAuthor() != null) {
+								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+							}
 							if (m.getHeader() != null) builder.setTitle(m.getHeader());
-							if (m.getFooter() != null) builder.setFooter(m.getFooter());
+							if (m.getFooter() != null) {
+								if (m.getFooter().getIconUrl() != null) {
+									builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+								} else {
+									builder.setFooter(m.getFooter().getText());
+								}
+							}
 							if (m.getColor() != null) builder.setColor(m.getColor());
-							if (m.getThumbnail() != null) builder.setThumbnail(m.getThumbnail());
+							if (m.getThumbnail() != null) {
+								builder.setThumbnail(m.getThumbnail().getUrl());
+							}
 							if (m.getDescription() != null) builder.setDescription(m.getDescription());
-							if (m.getImage() != null) builder.setImage(m.getImage());
+							if (m.getImage() != null) {
+								builder.setImage(m.getImage().getUrl());
+							}
+							for (EmbeddedMessage.Field f : m.getFields()) {
+								builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+							}
 							threadChannel.sendMessageEmbeds(builder.build()).queue();
 							return m;
 						});
@@ -395,6 +432,37 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
 				return newDeployable(() -> newMessage(t.sendMessage(message).submit().join()));
+			}
+
+			@Override
+			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+				return newDeployable(() -> {
+					EmbedBuilder builder = new EmbedBuilder();
+					if (m.getAuthor() != null) {
+						builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+					}
+					if (m.getHeader() != null) builder.setTitle(m.getHeader());
+					if (m.getFooter() != null) {
+						if (m.getFooter().getIconUrl() != null) {
+							builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+						} else {
+							builder.setFooter(m.getFooter().getText());
+						}
+					}
+					if (m.getColor() != null) builder.setColor(m.getColor());
+					if (m.getThumbnail() != null) {
+						builder.setThumbnail(m.getThumbnail().getUrl());
+					}
+					if (m.getDescription() != null) builder.setDescription(m.getDescription());
+					if (m.getImage() != null) {
+						builder.setImage(m.getImage().getUrl());
+					}
+					for (EmbeddedMessage.Field f : m.getFields()) {
+						builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+					}
+					t.sendMessageEmbeds(builder.build()).queue();
+					return m;
+				});
 			}
 		};
 	}
