@@ -28,8 +28,8 @@ public class ExampleCommand extends JDACommand {
 		if (variable.contains(flag)) {
 			Class<String> sflag = String.class;
 			if (variable.contains(sflag)) {
-				Guppy g = variable.get(flag);
-				String message = variable.get(sflag);
+				Guppy g = variable.get(flag, 0);
+				String message = variable.get(sflag, 0);
 				Guppy.Message m = g.sendMessage(message).submit().join();
 				Emoji e = GuppyAPI.getInstance().getEmoji("wat");
 				if (e != null) {

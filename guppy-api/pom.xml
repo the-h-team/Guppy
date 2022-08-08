@@ -98,13 +98,7 @@
                                     </excludes>
                                 </filter>
                                 <filter>
-                                    <artifact>net.dv8tion.jda</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/MANIFEST.MF</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>net.md_5.bungee</artifact>
+                                    <artifact>net.dv8tion</artifact>
                                     <excludes>
                                         <exclude>META-INF/MANIFEST.MF</exclude>
                                     </excludes>
@@ -129,13 +123,13 @@
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-containers</artifactId>
             <version>${panther.version}</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-common</artifactId>
             <version>${panther.version}</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

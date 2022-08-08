@@ -19,13 +19,17 @@ public interface Command {
 
 	interface Variable {
 
-		@NotNull <T> T get(@NotNull TypeAdapter<T> typeFlag);
+		@NotNull Channel getChannel();
 
-		@NotNull <T> T get(@NotNull Class<T> typeFlag);
+		@NotNull <T> T get(@NotNull TypeAdapter<T> typeFlag, int index);
+
+		@NotNull <T> T get(@NotNull Class<T> typeFlag, int index);
 
 		<T> boolean contains(@NotNull TypeAdapter<T> typeFlag);
 
 		<T> boolean contains(@NotNull Class<T> typeFlag);
+
+		<T> int size(@NotNull Class<T> typeFlag);
 
 		boolean isEmpty();
 

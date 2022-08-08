@@ -47,6 +47,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.security.auth.login.LoginException;
 import javax.swing.*;
@@ -58,6 +59,7 @@ import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.TextChannel;
@@ -166,6 +168,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public boolean isPrivate() {
 						return true;
+					}
+
+					@Override
+					public void setName(@NotNull String newName) {
+						((TextChannel)message.getChannel()).getManager().setName(newName);
 					}
 
 					@Override
@@ -331,15 +338,44 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public Deployable<Message> sendMessage(@NotNull String message) {
+				return newDeployable(() -> newMessage(u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessage(message).submit().join()).submit().join()));
+			}
+
+			@Override
+			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
 				return newDeployable(() -> {
-					;
-					return newMessage(u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessage(message).submit().join()).submit().join());
+					EmbedBuilder builder = new EmbedBuilder();
+					if (m.getAuthor() != null) {
+						builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
+					}
+					if (m.getHeader() != null) builder.setTitle(m.getHeader());
+					if (m.getFooter() != null) {
+						if (m.getFooter().getIconUrl() != null) {
+							builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
+						} else {
+							builder.setFooter(m.getFooter().getText());
+						}
+					}
+					if (m.getColor() != null) builder.setColor(m.getColor());
+					if (m.getThumbnail() != null) {
+						builder.setThumbnail(m.getThumbnail().getUrl());
+					}
+					if (m.getDescription() != null) builder.setDescription(m.getDescription());
+					if (m.getImage() != null) {
+						builder.setImage(m.getImage().getUrl());
+					}
+					for (EmbeddedMessage.Field f : m.getFields()) {
+						builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
+					}
+					u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessageEmbeds(builder.build()).submit().join()).queue();
+					return m;
 				});
 			}
+
 		};
 	}
 
-	public @NotNull Channel newChannel(@NotNull TextChannel t) {
+	public @NotNull Channel newChannel(@NotNull MessageChannel t) {
 		return new Channel() {
 
 			@Override
@@ -364,7 +400,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public @NotNull PantherCollection<Thread> getThreads() {
-				return t.getThreadChannels().stream().map(threadChannel -> new Thread() {
+				if (!(t instanceof TextChannel)) return new PantherList<>();
+				return ((TextChannel)t).getThreadChannels().stream().map(threadChannel -> new Thread() {
 					@Override
 					public @NotNull String getName() {
 						return threadChannel.getName();
@@ -439,6 +476,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public boolean isPrivate() {
 				return false;
+			}
+
+			@Override
+			public void setName(@NotNull String newName) {
+				if (t instanceof TextChannel) ((TextChannel)t).getManager().setName(newName).queue();
 			}
 
 			@Override
@@ -660,27 +702,30 @@ public final class GuppyEntryPoint implements Vent.Host {
 			if (test != null) return test;
 			Guild guild = getJDA().getGuildById(570063954118836245L);
 			if (categoryId > 0) {
-				guild.createTextChannel(name, getJDA().getCategoryById(categoryId)).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.queue();
+				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name, getJDA().getCategoryById(categoryId)).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.submit().join());
 			} else {
-				guild.createTextChannel(name).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.queue();
+				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+						.submit().join());
 			}
-			return getChannel(name);
 		}
 
-		public void memberInitialize(Guild guild, User user, String name, long categoryId) {
+		public Channel memberInitialize(Guild guild, User user, String name, long categoryId) {
 			Member member = guild.getMember(user);
 			if (categoryId > 0) {
-				guild.createTextChannel(name, getJDA().getCategoryById(categoryId))
+				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name, getJDA().getCategoryById(categoryId))
 						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
 						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.queue();
+						.addPermissionOverride(getJDA().getRoleById(751689293721895013L), Arrays.asList(Permission.values()), null)
+						.addPermissionOverride(getJDA().getRoleById(570087140457840640L), Arrays.asList(Permission.values()), null)
+						.submit().join());
 			} else {
-				guild.createTextChannel(name)
+				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name)
 						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
 						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.queue();
+						.addPermissionOverride(getJDA().getRoleById(751689293721895013L), Arrays.asList(Permission.values()), null)
+						.addPermissionOverride(getJDA().getRoleById(570087140457840640L), Arrays.asList(Permission.values()), null)
+						.submit().join());
 			}
 		}
 
@@ -690,13 +735,14 @@ public final class GuppyEntryPoint implements Vent.Host {
 			if (test != null) return test;
 			User match = getJDA().getUserById(guppy.getId());
 			Guild guild = getJDA().getGuildById(570063954118836245L);
-			memberInitialize(guild, match, name, categoryId);
-			return getChannel(name);
+			return memberInitialize(guild, match, name, categoryId);
 		}
 
 		@Override
 		public @NotNull PantherCollection<Channel> getChannels() {
-			return jda.getTextChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(PantherCollectors.toImmutableList());
+			PantherCollection<Channel> channels = jda.getTextChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(PantherCollectors.toList());
+			channels.addAll(jda.getNewsChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(Collectors.toList()));
+			return channels;
 		}
 
 		@Override

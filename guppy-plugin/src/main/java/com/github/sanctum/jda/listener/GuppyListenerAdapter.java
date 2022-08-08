@@ -12,13 +12,16 @@ import com.github.sanctum.jda.event.BotMessageReceivedEvent;
 import com.github.sanctum.jda.event.GuppyMessageReactEvent;
 import com.github.sanctum.jda.event.GuppyMessageSentEvent;
 import com.github.sanctum.panther.container.PantherCollection;
+import com.github.sanctum.panther.container.PantherEntryMap;
 import com.github.sanctum.panther.container.PantherList;
+import com.github.sanctum.panther.container.PantherMap;
 import com.github.sanctum.panther.util.Deployable;
 import com.github.sanctum.panther.util.PantherString;
 import com.github.sanctum.panther.util.SimpleAsynchronousTask;
 import com.github.sanctum.panther.util.TypeAdapter;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -65,7 +68,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 					return new Channel() {
 						@Override
 						public long getId() {
-							return e.getPrivateChannel().getIdLong();
+							return e.getChannel().getIdLong();
 						}
 
 						@Override
@@ -89,8 +92,13 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 						}
 
 						@Override
+						public void setName(@NotNull String newName) {
+
+						}
+
+						@Override
 						public void delete() {
-							e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+							e.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
 						}
 
 						@Override
@@ -196,7 +204,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 			};
 			GuppyMessageReactEvent ev = new GuppyVentCall<>(new GuppyMessageReactEvent(guppy, m, e.getEmoji().getFormatted(), GuppyMessageReactEvent.ReactionResult.ADD)).schedule().join();
 			if (ev.isCancelled()) {
-				message.getReaction(e.getEmoji()).removeReaction(e.getUser()).queue();
+				message.getReaction(e.getEmoji()).removeReaction(e.getUser()).queueAfter(2, TimeUnit.MILLISECONDS);
 			}
 		}
 	}
@@ -242,8 +250,13 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 						}
 
 						@Override
+						public void setName(@NotNull String newName) {
+
+						}
+
+						@Override
 						public void delete() {
-							e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+							e.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
 						}
 
 						@Override
@@ -347,8 +360,7 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 					SimpleAsynchronousTask.runLater(() -> message.delete().queue(), 4);
 				}
 			};
-			GuppyMessageReactEvent ev = new GuppyVentCall<>(new GuppyMessageReactEvent(guppy, m, e.getEmoji().getFormatted(), GuppyMessageReactEvent.ReactionResult.REMOVE)).schedule().join();
-			if (ev.isCancelled()) message.getReaction(e.getEmoji()).removeReaction(e.getUser()).queueAfter(2, TimeUnit.MILLISECONDS);
+			new GuppyVentCall<>(new GuppyMessageReactEvent(guppy, m, e.getEmoji().getFormatted(), GuppyMessageReactEvent.ReactionResult.REMOVE)).schedule().join();
 		}
 	}
 
@@ -394,8 +406,13 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 							}
 
 							@Override
+							public void setName(@NotNull String newName) {
+
+							}
+
+							@Override
 							public void delete() {
-								e.getPrivateChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+								e.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
 							}
 
 							@Override
@@ -591,43 +608,48 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 		if (test != null) {
 			Command.Options options = test.getOptions();
 			if (options.get().size() > 0) {
-				final Map<Class<?>, Object> classMap = new HashMap<>();
+				final PantherMap<Class<?>, PantherCollection<Object>> classMap = new PantherEntryMap<>();
 				for (Command.Option o : options.get()) {
 					OptionMapping mapping = e.getOption(o.getName());
 					if (mapping != null) {
 						switch (o.getType()) {
 							case USER:
 								User u = mapping.getAsUser();
-								classMap.put(Guppy.class, entryPoint.getGuppy(u));
+								classMap.computeIfAbsent(Guppy.class, new PantherList<>()).add(entryPoint.getGuppy(u));
 								break;
 							case INTEGER:
 								int i = mapping.getAsInt();
-								classMap.put(Integer.class, i);
+								classMap.computeIfAbsent(Integer.class, new PantherList<>()).add(i);
 								break;
 							case NUMBER:
 								Number n = mapping.getAsDouble();
-								classMap.put(Number.class, n);
+								classMap.computeIfAbsent(Number.class, new PantherList<>()).add(n);
 								break;
 							case ROLE:
 								Role r = mapping.getAsRole();
-								classMap.put(com.github.sanctum.jda.common.Role.class, api.getRole(r.getIdLong()));
+								classMap.computeIfAbsent(com.github.sanctum.jda.common.Role.class, new PantherList<>()).add(api.getRole(r.getIdLong()));
 								break;
 							case STRING:
 								String s = mapping.getAsString();
-								classMap.put(String.class, s);
+								classMap.computeIfAbsent(String.class, new PantherList<>()).add(s);
 								break;
 						}
 					}
 				}
 				Command.Variable variable = new Command.Variable() {
 					@Override
-					public <T> @NotNull T get(@NotNull TypeAdapter<T> typeFlag) {
-						return (T) classMap.get(typeFlag.getType());
+					public @NotNull Channel getChannel() {
+						return GuppyAPI.getInstance().getChannel(e.getChannel().getIdLong());
 					}
 
 					@Override
-					public <T> @NotNull T get(@NotNull Class<T> typeFlag) {
-						return (T) classMap.get(typeFlag);
+					public <T> @NotNull T get(@NotNull TypeAdapter<T> typeFlag, int index) {
+						return (T) classMap.get(typeFlag.getType()).get(index);
+					}
+
+					@Override
+					public <T> @NotNull T get(@NotNull Class<T> typeFlag, int index) {
+						return (T) classMap.get(typeFlag).get(index);
 					}
 
 					@Override
@@ -638,6 +660,11 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 					@Override
 					public <T> boolean contains(@NotNull Class<T> typeFlag) {
 						return classMap.containsKey(typeFlag);
+					}
+
+					@Override
+					public <T> int size(@NotNull Class<T> typeFlag) {
+						return classMap.get(typeFlag).size();
 					}
 
 					@Override
@@ -682,14 +709,20 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 				}
 			} else {
 				EphemeralResponse response = test.onExecuted(entryPoint.getGuppy(e.getUser()), new Command.Variable() {
+
 					@Override
-					public <T> @NotNull T get(@NotNull TypeAdapter<T> typeFlag) {
-						return null;
+					public @NotNull Channel getChannel() {
+						return GuppyAPI.getInstance().getChannel(e.getChannel().getIdLong());
 					}
 
 					@Override
-					public <T> @NotNull T get(@NotNull Class<T> typeFlag) {
-						return null;
+					public <T> @NotNull T get(@NotNull TypeAdapter<T> typeFlag, int index) {
+						return (T) new Object();
+					}
+
+					@Override
+					public <T> @NotNull T get(@NotNull Class<T> typeFlag, int index) {
+						return (T) new Object();
 					}
 
 					@Override
@@ -700,6 +733,11 @@ public final class GuppyListenerAdapter extends ListenerAdapter {
 					@Override
 					public <T> boolean contains(@NotNull Class<T> typeFlag) {
 						return false;
+					}
+
+					@Override
+					public <T> int size(@NotNull Class<T> typeFlag) {
+						return 0;
 					}
 
 					@Override

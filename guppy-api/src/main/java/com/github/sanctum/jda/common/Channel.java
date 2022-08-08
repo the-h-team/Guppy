@@ -17,6 +17,8 @@ public interface Channel extends Identifiable, Mailable {
 
 	boolean isPrivate();
 
+	void setName(@NotNull String newName);
+
 	void delete();
 
 	interface Thread extends Identifiable, Mailable {

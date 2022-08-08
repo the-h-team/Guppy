@@ -97,6 +97,8 @@ public final class DockingAgent {
 			@Override
 			public void onConstruct(@NotNull JDABuilder builder) {
 				builder.enableCache(CacheFlag.ACTIVITY);
+				builder.enableCache(CacheFlag.EMOJI);
+				builder.enableCache(CacheFlag.VOICE_STATE);
 				builder.setChunkingFilter(ChunkingFilter.ALL);
 				builder.setMemberCachePolicy(MemberCachePolicy.ALL);
 				int limit = api.getConfig().getNode("estimated-size").toPrimitive().getInt();
