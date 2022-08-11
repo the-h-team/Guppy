@@ -75,23 +75,25 @@
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-common</artifactId>
             <version>${panther.version}</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.the-h-team.Labyrinth</groupId>
+            <groupId>com.github.the-h-team</groupId>
             <artifactId>labyrinth-common</artifactId>
-            <version>1.8.0.R2-SNAPSHOT</version>
-            <scope>compile</scope>
+            <version>1.8.0-SNAPSHOT</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.the-h-team</groupId>
             <artifactId>guppy-api</artifactId>
             <version>1.0.0</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.the-h-team</groupId>
             <artifactId>guppy-plugin</artifactId>
             <version>1.0.0</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

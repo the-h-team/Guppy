@@ -16,11 +16,15 @@ public interface Guppy extends Identifiable, Mailable {
 
 	@Nullable Link getLink();
 
+	@NotNull Voice getVoice();
+
 	@NotNull Role[] getRoles();
 
 	@Nullable Role getRole(@NotNull String name);
 
 	@Nullable Role getRole(long id);
+
+	Deployable<Void> setLink(@NotNull Link link);
 
 	interface Message {
 
@@ -49,6 +53,26 @@ public interface Guppy extends Identifiable, Mailable {
 		default boolean isEmbedded() {
 			return getAttached().length > 0;
 		}
+
+	}
+
+	interface Voice {
+
+		boolean isSelfMuted();
+
+		boolean isSelfDeafened();
+
+		boolean isMuted();
+
+		boolean isDeafened();
+
+		boolean setMuted(boolean muted);
+
+		default boolean isActive() {
+			return getChannel() != null && getChannel().isVoice();
+		}
+
+		@Nullable Channel getChannel();
 
 	}
 

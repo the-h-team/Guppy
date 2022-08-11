@@ -6,15 +6,18 @@ import com.github.sanctum.jda.common.EmbeddedMessage;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.GuppyConfigurable;
 import com.github.sanctum.jda.common.JDAController;
+import com.github.sanctum.jda.common.MusicPlayer;
 import com.github.sanctum.jda.common.Reaction;
 import com.github.sanctum.jda.common.Role;
 import com.github.sanctum.jda.listener.GuppyCommandProcessor;
-import com.github.sanctum.jda.listener.GuppyListenerAdapter;
+import com.github.sanctum.jda.listener.JDAListenerAdapter;
 import com.github.sanctum.jda.loading.DockingAgent;
 import com.github.sanctum.jda.ui.api.ConsoleCommand;
 import com.github.sanctum.jda.ui.api.JDAInput;
 import com.github.sanctum.jda.ui.content.MainPanel;
 import com.github.sanctum.jda.ui.content.StopConsoleCommand;
+import com.github.sanctum.jda.util.DefaultAudioListener;
+import com.github.sanctum.jda.util.DefaultAudioSendHandler;
 import com.github.sanctum.jda.util.InvalidGuppyStateException;
 import com.github.sanctum.jda.util.OptionTypeConverter;
 import com.github.sanctum.panther.annotation.Comment;
@@ -34,11 +37,23 @@ import com.github.sanctum.panther.util.Check;
 import com.github.sanctum.panther.util.Deployable;
 import com.github.sanctum.panther.util.DeployableMapping;
 import com.github.sanctum.panther.util.PantherLogger;
+import com.github.sanctum.panther.util.ParsedTimeFormat;
 import com.github.sanctum.panther.util.SimpleAsynchronousTask;
+import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -55,15 +70,19 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.audio.AudioSendHandler;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageReaction;
+import net.dv8tion.jda.api.entities.NewsChannel;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.VoiceChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
@@ -86,6 +105,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	static GuppyEntryPoint entryPoint;
 	static MainPanel main;
 	JDA jda;
+	Guild guild;
 	GuppyAPI api;
 	boolean active;
 	final Logger logger;
@@ -120,6 +140,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			n.set(config);
 			ServiceFactory.getInstance().getLoader(GuppyConfigurable.class).supply(n);
 		}
+		this.guild = jda.getGuildById(config.getNode("guild").toPrimitive().getLong());
 	}
 
 	public void disable() throws InvalidGuppyStateException {
@@ -135,7 +156,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return jda;
 	}
 
-	public @NotNull Guppy.Message newMessage(@NotNull Message message) {
+	@NotNull
+	public Guild getGuild() {
+		return guild;
+	}
+
+	public @NotNull Guppy.Message wrapPrivateMessage(@NotNull Message message) {
 		return new Guppy.Message() {
 			@Override
 			public @NotNull String getText() {
@@ -145,6 +171,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull Channel getChannel() {
 				return new Channel() {
+					@Override
+					public Deployable<Void> open() {
+						return null;
+					}
+
+					@Override
+					public Deployable<Void> close() {
+						return null;
+					}
+
 					@Override
 					public long getId() {
 						return message.getChannel().getIdLong();
@@ -171,6 +207,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
+					public boolean isNews() {
+						return false;
+					}
+
+					@Override
+					public boolean isVoice() {
+						return false;
+					}
+
+					@Override
 					public void setName(@NotNull String newName) {
 						((TextChannel)message.getChannel()).getManager().setName(newName);
 					}
@@ -187,12 +233,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public Deployable<Guppy.Message> sendMessage(@NotNull String m) {
-						return GuppyEntryPoint.newDeployable(() -> newMessage(message.getChannel().sendMessage(m).submit().join()));
+						return Deployable.of(() -> wrapPrivateMessage(message.getChannel().sendMessage(m).submit().join()), 1);
 					}
 
 					@Override
 					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-						return GuppyEntryPoint.newDeployable(() -> {
+						return Deployable.of(() -> {
 							EmbedBuilder builder = new EmbedBuilder();
 							if (m.getAuthor() != null) {
 								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
@@ -218,7 +264,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 							}
 							message.getChannel().sendMessageEmbeds(builder.build()).queue();
 							return m;
-						});
+						}, 1);
 					}
 				};
 			}
@@ -283,12 +329,120 @@ public final class GuppyEntryPoint implements Vent.Host {
 	public @NotNull Guppy newGuppy(@NotNull User u) {
 		return new Guppy() {
 
-			final Link link;
+			Link link;
+			final Voice voice;
 
 			{
 				// search in data for user link.
 
 				this.link = null;
+				this.voice = new Voice() {
+					final Member m = guild.getMember(u);
+					@Override
+					public boolean isSelfMuted() {
+						return getState().isSelfMuted();
+					}
+
+					@NotNull GuildVoiceState getState() {
+						assert m != null;
+						GuildVoiceState state = m.getVoiceState();
+						assert state != null;
+						return state;
+					}
+
+					@Override
+					public boolean isSelfDeafened() {
+						return getState().isSelfDeafened();
+					}
+
+					@Override
+					public boolean isMuted() {
+						return getState().isGuildMuted();
+					}
+
+					@Override
+					public boolean isDeafened() {
+						return getState().isGuildDeafened();
+					}
+
+					@Override
+					public boolean setMuted(boolean muted) {
+						if (getState().isSelfMuted()) return false;
+						if (muted) getState().declineSpeaker().queue();
+						if (!muted) getState().approveSpeaker().queue();
+						return true;
+					}
+
+					@Override
+					public @NotNull Channel getChannel() {
+						return new Channel() {
+							@Override
+							public Deployable<Void> open() {
+								return null;
+							}
+
+							@Override
+							public Deployable<Void> close() {
+								return null;
+							}
+
+							@Override
+							public @Nullable Thread getThread(@NotNull String name) {
+								return null;
+							}
+
+							@Override
+							public @Nullable Thread getThread(long id) {
+								return null;
+							}
+
+							@Override
+							public @NotNull PantherCollection<Thread> getThreads() {
+								return new PantherList<>();
+							}
+
+							@Override
+							public boolean isPrivate() {
+								return false;
+							}
+
+							@Override
+							public boolean isNews() {
+								return false;
+							}
+
+							@Override
+							public boolean isVoice() {
+								return true;
+							}
+
+							@Override
+							public void setName(@NotNull String newName) {
+								getState().getChannel().getManager().setName(newName).queue();
+							}
+
+							@Override
+							public void delete() {
+								getState().getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
+							}
+
+							@Override
+							public long getId() {
+								return getState().getChannel().getIdLong();
+							}
+
+							@Override
+							public Deployable<Message> sendMessage(@NotNull String message) {
+								return Check.forNull(null, "Messages cannot be sent to voice channels!");
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return getState().getChannel().getName();
+							}
+						};
+					}
+				};
 			}
 
 			@Override
@@ -322,8 +476,13 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public @NotNull Voice getVoice() {
+				return voice;
+			}
+
+			@Override
 			public @NotNull Role[] getRoles() {
-				return jda.getGuildById(570063954118836245L).getRoles().stream().map(GuppyEntryPoint.this::newRole).toArray(Role[]::new);
+				return jda.getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong()).getRoles().stream().map(GuppyEntryPoint.this::newRole).toArray(Role[]::new);
 			}
 
 			@Override
@@ -337,13 +496,20 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public Deployable<Void> setLink(@NotNull Link link) {
+				return Deployable.of(() -> {
+					this.link = link;
+				}, 0);
+			}
+
+			@Override
 			public Deployable<Message> sendMessage(@NotNull String message) {
-				return newDeployable(() -> newMessage(u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessage(message).submit().join()).submit().join()));
+				return Deployable.of(() -> wrapPrivateMessage(u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessage(message).submit().join()).submit().join()), 1);
 			}
 
 			@Override
 			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					EmbedBuilder builder = new EmbedBuilder();
 					if (m.getAuthor() != null) {
 						builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
@@ -369,7 +535,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 					u.openPrivateChannel().map(privateChannel -> privateChannel.sendMessageEmbeds(builder.build()).submit().join()).queue();
 					return m;
-				});
+				}, 1);
 			}
 
 		};
@@ -377,6 +543,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 	public @NotNull Channel newChannel(@NotNull MessageChannel t) {
 		return new Channel() {
+
+			@Override
+			public Deployable<Void> open() {
+				return null;
+			}
+
+			@Override
+			public Deployable<Void> close() {
+				return null;
+			}
 
 			@Override
 			public @NotNull String getName() {
@@ -437,12 +613,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-						return newDeployable(() -> newMessage(threadChannel.sendMessage(message).submit().join()));
+						return Deployable.of(() -> wrapPrivateMessage(threadChannel.sendMessage(message).submit().join()), 1);
 					}
 
 					@Override
 					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-						return newDeployable(() -> {
+						return Deployable.of(() -> {
 							EmbedBuilder builder = new EmbedBuilder();
 							if (m.getAuthor() != null) {
 								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
@@ -468,13 +644,23 @@ public final class GuppyEntryPoint implements Vent.Host {
 							}
 							threadChannel.sendMessageEmbeds(builder.build()).queue();
 							return m;
-						});
+						}, 1);
 					}
 				}).collect(PantherCollectors.toImmutableList());
 			}
 
 			@Override
 			public boolean isPrivate() {
+				return false;
+			}
+
+			@Override
+			public boolean isNews() {
+				return t instanceof NewsChannel;
+			}
+
+			@Override
+			public boolean isVoice() {
 				return false;
 			}
 
@@ -490,12 +676,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-				return newDeployable(() -> newMessage(t.sendMessage(message).submit().join()));
+				return Deployable.of(() -> wrapPrivateMessage(t.sendMessage(message).submit().join()), 1);
 			}
 
 			@Override
 			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					EmbedBuilder builder = new EmbedBuilder();
 					if (m.getAuthor() != null) {
 						builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
@@ -521,7 +707,106 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 					t.sendMessageEmbeds(builder.build()).queue();
 					return m;
-				});
+				}, 1);
+			}
+		};
+	}
+
+	public @NotNull Channel newChannel(@NotNull VoiceChannel t) {
+		return new Channel() {
+
+			@Override
+			public Deployable<Void> open() {
+				return Deployable.of(() -> {
+					final MusicPlayer.SendHandler handler = GuppyAPI.getInstance().getPlayer().getSendHandler();
+					getGuild().getAudioManager().setSendingHandler(handler instanceof AudioSendHandler ? (AudioSendHandler) handler : new AudioSendHandler() {
+						@Override
+						public boolean canProvide() {
+							return handler.canProvide();
+						}
+
+						@Nullable
+						@Override
+						public ByteBuffer provide20MsAudio() {
+							return handler.provide20MsAudio();
+						}
+
+						@Override
+						public boolean isOpus() {
+							return handler.isOpus();
+						}
+					});
+					getGuild().getAudioManager().openAudioConnection(getJDA().getVoiceChannelById(getId()));
+				}, 1);
+			}
+
+			@Override
+			public Deployable<Void> close() {
+				return Deployable.of(() -> getGuild().getAudioManager().closeAudioConnection(), 1);
+			}
+
+			@Override
+			public @NotNull String getName() {
+				return t.getName();
+			}
+
+			@Override
+			public long getId() {
+				return t.getIdLong();
+			}
+
+			@Override
+			public @Nullable Thread getThread(@NotNull String name) {
+				return getThreads().stream().filter(t1 -> t1.getName().equals(name)).findFirst().orElse(null);
+			}
+
+			@Override
+			public @Nullable Thread getThread(long id) {
+				return getThreads().stream().filter(t1 -> t1.getId() == id).findFirst().orElse(null);
+			}
+
+			@Override
+			public @NotNull PantherCollection<Thread> getThreads() {
+				return new PantherList<>();
+			}
+
+			@Override
+			public boolean isPrivate() {
+				return false;
+			}
+
+			@Override
+			public boolean isNews() {
+				return false;
+			}
+
+			@Override
+			public boolean isVoice() {
+				return true;
+			}
+
+			@Override
+			public void setName(@NotNull String newName) {
+				t.getManager().setName(newName).queueAfter(2, TimeUnit.MILLISECONDS);
+			}
+
+			@Override
+			public void delete() {
+				t.delete().queueAfter(2, TimeUnit.MILLISECONDS);
+			}
+
+			@Override
+			public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
+				return Deployable.of(() -> {
+					return null;
+				}, 1);
+			}
+
+			@Override
+			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
+				return Deployable.of(() -> {
+					return m;
+				}, 1);
 			}
 		};
 	}
@@ -586,6 +871,324 @@ public final class GuppyEntryPoint implements Vent.Host {
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
+		final MusicPlayer player = new MusicPlayer() {
+
+			private final AudioPlayer player;
+			private final Controller controller;
+			private final Queue queue;
+			private final DefaultAudioSendHandler sendWrapper;
+			private final AudioPlayerManager audioPlayerManager;
+
+			{
+				this.audioPlayerManager = new DefaultAudioPlayerManager();
+				this.player = audioPlayerManager.createPlayer();
+				this.controller = new Controller() {
+					@Override
+					public Track getPlaying() {
+						return new Track() {
+							AudioTrack handle = player.getPlayingTrack();
+							@Override
+							public @NotNull String getAuthor() {
+								return handle.getInfo().author;
+							}
+
+							@Override
+							public void setPosition(long position) {
+								handle.setPosition(position);
+							}
+
+							@Override
+							public void stop() {
+								handle.stop();
+							}
+
+							@Override
+							public long getDuration() {
+								return handle.getDuration();
+							}
+
+							@Override
+							public @NotNull Object getHandle() {
+								return handle;
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return handle.getInfo().title;
+							}
+						};
+					}
+
+					@Override
+					public boolean start(Track track, boolean interrupt) {
+						return player.startTrack((AudioTrack) track.getHandle(), !interrupt);
+					}
+
+					@Override
+					public void play(Track track) {
+						player.playTrack((AudioTrack) track.getHandle());
+					}
+
+					@Override
+					public void stop() {
+						player.stopTrack();
+					}
+
+					@Override
+					public int getVolume() {
+						return player.getVolume();
+					}
+
+					@Override
+					public void setVolume(int volume) {
+						player.setVolume(volume);
+					}
+
+					@Override
+					public boolean isPaused() {
+						return player.isPaused();
+					}
+
+					@Override
+					public void setPaused(boolean value) {
+						player.setPaused(value);
+					}
+
+					@Override
+					public void destroy() {
+						player.destroy();
+					}
+
+					@Override
+					public void cleanup(long threshold) {
+						player.checkCleanup(threshold);
+					}
+
+					@Override
+					public boolean isConnected() {
+						return getGuild().getAudioManager().isConnected();
+					}
+				};
+				this.queue = new Queue(controller);
+				this.player.addListener(new DefaultAudioListener(getChannel(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("channels").getNode("commands").getNode("id").toPrimitive().getLong()), this));
+				this.sendWrapper = new DefaultAudioSendHandler(player);
+				AudioSourceManagers.registerRemoteSources(audioPlayerManager);
+			}
+
+
+			@Override
+			public @NotNull Controller getController() {
+				return controller;
+			}
+
+			@Override
+			public @NotNull Queue getQueue() {
+				return queue;
+			}
+
+			@Override
+			public @NotNull SendHandler getSendHandler() {
+				return sendWrapper;
+			}
+
+			@Override
+			public void stop() {
+				player.destroy();
+			}
+
+			@Override
+			public void load(@NotNull Channel channel, @NotNull String url) {
+				audioPlayerManager.loadItemOrdered(this, url, new AudioLoadResultHandler() {
+					@Override
+					public void trackLoaded(AudioTrack track) {
+						queue.add(new Track() {
+							final AudioTrack handle = track;
+							@Override
+							public @NotNull String getAuthor() {
+								return handle.getInfo().author;
+							}
+
+							@Override
+							public void setPosition(long position) {
+								handle.setPosition(position);
+							}
+
+							@Override
+							public void stop() {
+								handle.stop();
+							}
+
+							@Override
+							public long getDuration() {
+								return handle.getDuration();
+							}
+
+							@Override
+							public @NotNull Object getHandle() {
+								return handle;
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return handle.getInfo().title;
+							}
+						});
+						ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
+						channel.sendMessage("Queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
+					}
+
+					@Override
+					public void playlistLoaded(AudioPlaylist playlist) {
+						List<AudioTrack> tracks = playlist.getTracks();
+						if (!tracks.isEmpty()) {
+							// add possible filter to attempt hd vids first
+							AudioTrack track = tracks.get(0);
+							queue.add(new Track() {
+								final AudioTrack handle = track;
+								@Override
+								public @NotNull String getAuthor() {
+									return handle.getInfo().author;
+								}
+
+								@Override
+								public void setPosition(long position) {
+									handle.setPosition(position);
+								}
+
+								@Override
+								public void stop() {
+									handle.stop();
+								}
+
+								@Override
+								public long getDuration() {
+									return handle.getDuration();
+								}
+
+								@Override
+								public @NotNull Object getHandle() {
+									return handle;
+								}
+
+								@Override
+								public @NotNull String getName() {
+									return handle.getInfo().title;
+								}
+							});
+							ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
+							channel.sendMessage("Queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
+						}
+					}
+
+					@Override
+					public void noMatches() {
+						channel.sendMessage("Sorry {0} Unable to play track " + url).queue();					}
+
+					@Override
+					public void loadFailed(FriendlyException exception) {
+						exception.printStackTrace();
+						channel.sendMessage("Sorry {0} Unable to play track " + url).queue();
+					}
+				});
+			}
+
+			@Override
+			public void load(@NotNull Guppy guppy, @NotNull Channel channel, @NotNull String url) {
+				audioPlayerManager.loadItemOrdered(this, url, new AudioLoadResultHandler() {
+					@Override
+					public void trackLoaded(AudioTrack track) {
+						queue.add(new Track() {
+							final AudioTrack handle = track;
+							@Override
+							public @NotNull String getAuthor() {
+								return handle.getInfo().author;
+							}
+
+							@Override
+							public void setPosition(long position) {
+								handle.setPosition(position);
+							}
+
+							@Override
+							public void stop() {
+								handle.stop();
+							}
+
+							@Override
+							public long getDuration() {
+								return handle.getDuration();
+							}
+
+							@Override
+							public @NotNull Object getHandle() {
+								return handle;
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return handle.getInfo().title;
+							}
+						});
+						ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
+						channel.sendMessage(guppy.getAsMention() + " queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
+					}
+
+					@Override
+					public void playlistLoaded(AudioPlaylist playlist) {
+						List<AudioTrack> tracks = playlist.getTracks();
+						if (!tracks.isEmpty()) {
+							// add possible filter to attempt hd vids first
+							AudioTrack track = tracks.get(0);
+							queue.add(new Track() {
+								final AudioTrack handle = track;
+								@Override
+								public @NotNull String getAuthor() {
+									return handle.getInfo().author;
+								}
+
+								@Override
+								public void setPosition(long position) {
+									handle.setPosition(position);
+								}
+
+								@Override
+								public void stop() {
+									handle.stop();
+								}
+
+								@Override
+								public long getDuration() {
+									return handle.getDuration();
+								}
+
+								@Override
+								public @NotNull Object getHandle() {
+									return handle;
+								}
+
+								@Override
+								public @NotNull String getName() {
+									return handle.getInfo().title;
+								}
+							});
+							ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
+							channel.sendMessage(guppy.getAsMention() + " queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
+						}
+					}
+
+					@Override
+					public void noMatches() {
+						channel.sendMessage(MessageFormat.format("Sorry {0} Unable to find track ", guppy.getAsMention()) + url).queue();
+					}
+
+					@Override
+					public void loadFailed(FriendlyException exception) {
+						exception.printStackTrace();
+						channel.sendMessage(MessageFormat.format("Sorry {0} Unable to play track ", guppy.getAsMention()) + url).queue();
+					}
+				});
+			}
+		};
 		final JDAController controller = new JDAController() {
 			@Override
 			public boolean isRunning() {
@@ -594,7 +1197,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public Deployable<JDAController> stop() {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					if (Api.this.loaded) {
 						SimpleAsynchronousTask.runNow(() -> {
 							try {
@@ -606,12 +1209,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 						Api.this.loaded = false;
 					}
 					return null;
-				});
+				}, 1);
 			}
 
 			@Override
 			public Deployable<JDAController> start() {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					if (!Api.this.loaded) {
 						SimpleAsynchronousTask.runNow(() -> {
 							try {
@@ -623,12 +1226,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 						Api.this.loaded = true;
 					}
 					return this;
-				});
+				}, 1);
 			}
 
 			@Override
 			public Deployable<JDAController> restart() {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					logger.warning("---------------------------------");
 					logger.warning("Guppy is now attempting a bot restart..");
 					logger.warning("---------------------------------");
@@ -653,15 +1256,15 @@ public final class GuppyEntryPoint implements Vent.Host {
 						}
 					}, 180);
 					return this;
-				});
+				}, 1);
 			}
 
 			@Override
 			public Deployable<JDAController> restartAfter(long wait) {
-				return newDeployable(() -> {
+				return Deployable.of(() -> {
 					SimpleAsynchronousTask.runLater(restart()::deploy, wait);
 					return this;
-				});
+				}, 1);
 			}
 		};
 
@@ -700,7 +1303,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		public @NotNull Channel newChannel(@NotNull String name, long categoryId) {
 			Channel test = getChannel(name);
 			if (test != null) return test;
-			Guild guild = getJDA().getGuildById(570063954118836245L);
+			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
 			if (categoryId > 0) {
 				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name, getJDA().getCategoryById(categoryId)).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
 						.submit().join());
@@ -734,7 +1337,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			Channel test = getChannel(name);
 			if (test != null) return test;
 			User match = getJDA().getUserById(guppy.getId());
-			Guild guild = getJDA().getGuildById(570063954118836245L);
+			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
 			return memberInitialize(guild, match, name, categoryId);
 		}
 
@@ -742,6 +1345,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		public @NotNull PantherCollection<Channel> getChannels() {
 			PantherCollection<Channel> channels = jda.getTextChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(PantherCollectors.toList());
 			channels.addAll(jda.getNewsChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(Collectors.toList()));
+			channels.addAll(jda.getVoiceChannels().stream().map(GuppyEntryPoint.this::newChannel).collect(Collectors.toList()));
 			return channels;
 		}
 
@@ -757,7 +1361,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 		@Override
 		public @NotNull Deployable<Void> updateCommands() {
-			return newDeployable(() -> {
+			return Deployable.of(() -> {
 				PantherCollection<SlashCommandData> data = new PantherList<>();
 				for (Command c : getCommands()) {
 					SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
@@ -772,7 +1376,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 				jda.updateCommands().queue();
 				jda.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
 				return null;
-			});
+			}, 1);
 		}
 
 		@Override
@@ -836,8 +1440,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 		}
 
 		@Override
-		public @NotNull <T> Deployable<T> newDeployable(Supplier<T> supplier) {
-			return GuppyEntryPoint.newDeployable(supplier);
+		public @NotNull MusicPlayer getPlayer() {
+			return null;
 		}
 
 	}
@@ -848,74 +1452,6 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 	public static @NotNull("Main panel not loaded!") MainPanel getMainPanel() {
 		return main;
-	}
-
-	public static <T> Deployable<T> newDeployable(Supplier<T> supplier) {
-		return new Deployable<T>() {
-
-			T element;
-
-			@Override
-			public Deployable<T> deploy() {
-				element = supplier.get();
-				return this;
-			}
-
-			@Override
-			public Deployable<T> deploy(Consumer<? super T> consumer) {
-				deploy();
-				consumer.accept(element);
-				return this;
-			}
-
-			@Override
-			public Deployable<T> queue() {
-				element = submit().join();
-				return this;
-			}
-
-			@Override
-			public Deployable<T> queue(Consumer<? super T> consumer, long timeout) {
-				return queue();
-			}
-
-			@Override
-			public Deployable<T> queue(Consumer<? super T> consumer, Date date) {
-				return queue();
-			}
-
-			@Override
-			public <O> DeployableMapping<O> map(Function<? super T, ? extends O> mapper) {
-				throw new IllegalStateException("Mapping not supported.");
-			}
-
-			@Override
-			public Deployable<T> queue(long timeout) {
-				return queue();
-			}
-
-			@Override
-			public Deployable<T> queue(Date date) {
-				return queue();
-			}
-
-			@Override
-			public CompletableFuture<T> submit() {
-				return CompletableFuture.supplyAsync(supplier);
-			}
-
-			@Override
-			public T get() {
-				return this.element != null ? this.element : Deployable.super.get();
-			}
-
-			@Override
-			public T complete() {
-				deploy();
-				return this.element;
-			}
-		};
-
 	}
 
 	@Comment("This method handles application stuff.")
@@ -983,7 +1519,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 					builder.setToken(input.getToken());
 					builder.enableIntents(Arrays.asList(GatewayIntent.values()));
 					builder.setActivity(finalActivity);
-					builder.addEventListeners(new GuppyListenerAdapter());
+					builder.addEventListeners(new JDAListenerAdapter());
 					builder.enableCache(CacheFlag.ACTIVITY, CacheFlag.EMOJI, CacheFlag.VOICE_STATE, CacheFlag.ONLINE_STATUS);
 
 					builder.setChunkingFilter(ChunkingFilter.ALL);

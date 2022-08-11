@@ -5,6 +5,7 @@ import com.github.sanctum.jda.common.Command;
 import com.github.sanctum.jda.common.Emoji;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.JDAController;
+import com.github.sanctum.jda.common.MusicPlayer;
 import com.github.sanctum.jda.common.Role;
 import com.github.sanctum.panther.container.PantherCollection;
 import com.github.sanctum.panther.event.Vent;
@@ -151,10 +152,8 @@ public interface GuppyAPI extends Service {
 	@NotNull Vent.Host getHost();
 
 	/**
-	 * @param supplier
-	 * @param <T>
 	 * @return
 	 */
-	@NotNull <T> Deployable<T> newDeployable(Supplier<T> supplier);
+	@NotNull MusicPlayer getPlayer();
 
 }

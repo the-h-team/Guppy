@@ -5,9 +5,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * An object responsible for handling text channel and private channel delegation.
+ * An object responsible for delegating all channel types.
  */
-public interface Channel extends Identifiable, Mailable {
+public interface Channel extends Connectable, Identifiable, Mailable {
 
 	@Nullable Thread getThread(@NotNull String name);
 
@@ -16,6 +16,10 @@ public interface Channel extends Identifiable, Mailable {
 	@NotNull PantherCollection<Thread> getThreads();
 
 	boolean isPrivate();
+
+	boolean isNews();
+
+	boolean isVoice();
 
 	void setName(@NotNull String newName);
 

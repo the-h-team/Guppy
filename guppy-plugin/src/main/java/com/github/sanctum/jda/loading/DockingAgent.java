@@ -3,11 +3,10 @@ package com.github.sanctum.jda.loading;
 import com.github.sanctum.jda.GuppyAPI;
 import com.github.sanctum.jda.GuppyEntryPoint;
 import com.github.sanctum.jda.common.Command;
-import com.github.sanctum.jda.listener.GuppyListenerAdapter;
+import com.github.sanctum.jda.listener.JDAListenerAdapter;
 import com.github.sanctum.jda.util.OptionTypeConverter;
 import com.github.sanctum.panther.container.PantherCollection;
 import com.github.sanctum.panther.container.PantherList;
-import java.util.Arrays;
 import java.util.Locale;
 import javax.security.auth.login.LoginException;
 import net.dv8tion.jda.api.JDA;
@@ -67,7 +66,7 @@ public final class DockingAgent {
 			public void onConstruct(@NotNull JDABuilder builder) {
 				String token = api.getConfig().getNode("token").toPrimitive().getString();
 				builder.setToken(token);
-				builder.enableIntents(Arrays.asList(GatewayIntent.values()));
+				builder.enableIntents(GatewayIntent.GUILD_PRESENCES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.DIRECT_MESSAGE_REACTIONS, GatewayIntent.GUILD_EMOJIS_AND_STICKERS, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_MESSAGE_TYPING, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_VOICE_STATES);
 				// Set activity (like "playing Something")
 				Activity action;
 				String activity = api.getConfig().getNode("activity.style").toPrimitive().getString();
@@ -87,7 +86,7 @@ public final class DockingAgent {
 						break;
 				}
 				builder.setActivity(action);
-				builder.addEventListeners(new GuppyListenerAdapter());
+				builder.addEventListeners(new JDAListenerAdapter());
 			}
 		}
 
