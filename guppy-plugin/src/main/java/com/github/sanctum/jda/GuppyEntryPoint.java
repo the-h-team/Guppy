@@ -39,6 +39,7 @@ import com.github.sanctum.panther.util.DeployableMapping;
 import com.github.sanctum.panther.util.PantherLogger;
 import com.github.sanctum.panther.util.ParsedTimeFormat;
 import com.github.sanctum.panther.util.SimpleAsynchronousTask;
+import com.github.sanctum.panther.util.TaskChain;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
@@ -49,6 +50,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.sql.Time;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -72,6 +74,7 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.audio.AudioSendHandler;
 import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.entities.AudioChannel;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
@@ -140,7 +143,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			n.set(config);
 			ServiceFactory.getInstance().getLoader(GuppyConfigurable.class).supply(n);
 		}
-		this.guild = jda.getGuildById(config.getNode("guild").toPrimitive().getLong());
+		this.guild = jda.getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
 	}
 
 	public void disable() throws InvalidGuppyStateException {
@@ -337,15 +340,14 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 				this.link = null;
 				this.voice = new Voice() {
-					final Member m = guild.getMember(u);
+
 					@Override
 					public boolean isSelfMuted() {
 						return getState().isSelfMuted();
 					}
 
 					@NotNull GuildVoiceState getState() {
-						assert m != null;
-						GuildVoiceState state = m.getVoiceState();
+						GuildVoiceState state = guild.getMember(u).getVoiceState();
 						assert state != null;
 						return state;
 					}
@@ -374,73 +376,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
-					public @NotNull Channel getChannel() {
-						return new Channel() {
-							@Override
-							public Deployable<Void> open() {
-								return null;
-							}
-
-							@Override
-							public Deployable<Void> close() {
-								return null;
-							}
-
-							@Override
-							public @Nullable Thread getThread(@NotNull String name) {
-								return null;
-							}
-
-							@Override
-							public @Nullable Thread getThread(long id) {
-								return null;
-							}
-
-							@Override
-							public @NotNull PantherCollection<Thread> getThreads() {
-								return new PantherList<>();
-							}
-
-							@Override
-							public boolean isPrivate() {
-								return false;
-							}
-
-							@Override
-							public boolean isNews() {
-								return false;
-							}
-
-							@Override
-							public boolean isVoice() {
-								return true;
-							}
-
-							@Override
-							public void setName(@NotNull String newName) {
-								getState().getChannel().getManager().setName(newName).queue();
-							}
-
-							@Override
-							public void delete() {
-								getState().getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
-							}
-
-							@Override
-							public long getId() {
-								return getState().getChannel().getIdLong();
-							}
-
-							@Override
-							public Deployable<Message> sendMessage(@NotNull String message) {
-								return Check.forNull(null, "Messages cannot be sent to voice channels!");
-							}
-
-							@Override
-							public @NotNull String getName() {
-								return getState().getChannel().getName();
-							}
-						};
+					public Channel getChannel() {
+						AudioChannel channel = getState().getChannel();
+						if (channel == null) return null;
+						return newChannel(channel);
 					}
 				};
 			}
@@ -712,7 +651,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		};
 	}
 
-	public @NotNull Channel newChannel(@NotNull VoiceChannel t) {
+	public @NotNull Channel newChannel(@NotNull AudioChannel t) {
 		return new Channel() {
 
 			@Override
@@ -736,12 +675,14 @@ public final class GuppyEntryPoint implements Vent.Host {
 							return handler.isOpus();
 						}
 					});
+					PantherLogger.getInstance().getLogger().info("Connecting to voice channel " + getId());
 					getGuild().getAudioManager().openAudioConnection(getJDA().getVoiceChannelById(getId()));
 				}, 1);
 			}
 
 			@Override
 			public Deployable<Void> close() {
+				PantherLogger.getInstance().getLogger().info("Leaving voice channel " + getId());
 				return Deployable.of(() -> getGuild().getAudioManager().closeAudioConnection(), 1);
 			}
 
@@ -861,7 +802,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	}
 
 	public @NotNull Guppy getGuppy(@NotNull User u) {
-		return Optional.ofNullable(api.getGuppy(u.getName(), false)).orElse(newGuppy(u));
+		return Optional.ofNullable(api.getGuppy(u.getIdLong())).orElse(newGuppy(u));
 	}
 
 	public static GuppyEntryPoint getInstance() {
@@ -871,12 +812,14 @@ public final class GuppyEntryPoint implements Vent.Host {
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
-		final MusicPlayer player = new MusicPlayer() {
+		MusicPlayer player = new MusicPlayer() {
 
 			private final AudioPlayer player;
 			private final Controller controller;
 			private final Queue queue;
-			private final DefaultAudioSendHandler sendWrapper;
+			private Channel channel, voice;
+			private DefaultAudioListener listener;
+			private SendHandler sendWrapper;
 			private final AudioPlayerManager audioPlayerManager;
 
 			{
@@ -969,8 +912,9 @@ public final class GuppyEntryPoint implements Vent.Host {
 						return getGuild().getAudioManager().isConnected();
 					}
 				};
-				this.queue = new Queue(controller);
-				this.player.addListener(new DefaultAudioListener(getChannel(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("channels").getNode("commands").getNode("id").toPrimitive().getLong()), this));
+				this.queue = new Queue();
+				this.listener = new DefaultAudioListener(this);
+				TaskChain.getAsynchronous().wait(() -> this.player.addListener(listener), 88 * 50);
 				this.sendWrapper = new DefaultAudioSendHandler(player);
 				AudioSourceManagers.registerRemoteSources(audioPlayerManager);
 			}
@@ -991,48 +935,84 @@ public final class GuppyEntryPoint implements Vent.Host {
 				return sendWrapper;
 			}
 
+			@Nullable
+			@Override
+			public Channel LastAlerted() {
+				return channel;
+			}
+
+			@Nullable
+			@Override
+			public Channel LastSummoned() {
+				return voice;
+			}
+
+			@Override
+			public void setSendHandler(@NotNull SendHandler handler) {
+				this.sendWrapper = handler;
+			}
+
+			@Override
+			public void setListener(@NotNull Listener listener) {
+				this.player.removeListener(this.listener);
+				this.player.addListener(this.listener = new DefaultAudioListener(listener));
+			}
+
+			@Override
+			public void resetListener() {
+				this.listener = new DefaultAudioListener(this);
+			}
+
 			@Override
 			public void stop() {
 				player.destroy();
 			}
 
+			Track transform(AudioTrack track) {
+				return new Track() {
+					final AudioTrack handle = track;
+					@Override
+					public @NotNull String getAuthor() {
+						return handle.getInfo().author;
+					}
+
+					@Override
+					public void setPosition(long position) {
+						handle.setPosition(position);
+					}
+
+					@Override
+					public void stop() {
+						handle.stop();
+					}
+
+					@Override
+					public long getDuration() {
+						return handle.getDuration();
+					}
+
+					@Override
+					public @NotNull Object getHandle() {
+						return handle;
+					}
+
+					@Override
+					public @NotNull String getName() {
+						return handle.getInfo().title;
+					}
+				};
+			}
+
 			@Override
 			public void load(@NotNull Channel channel, @NotNull String url) {
+				this.channel = channel;
 				audioPlayerManager.loadItemOrdered(this, url, new AudioLoadResultHandler() {
 					@Override
 					public void trackLoaded(AudioTrack track) {
-						queue.add(new Track() {
-							final AudioTrack handle = track;
-							@Override
-							public @NotNull String getAuthor() {
-								return handle.getInfo().author;
-							}
-
-							@Override
-							public void setPosition(long position) {
-								handle.setPosition(position);
-							}
-
-							@Override
-							public void stop() {
-								handle.stop();
-							}
-
-							@Override
-							public long getDuration() {
-								return handle.getDuration();
-							}
-
-							@Override
-							public @NotNull Object getHandle() {
-								return handle;
-							}
-
-							@Override
-							public @NotNull String getName() {
-								return handle.getInfo().title;
-							}
-						});
+						Track n = transform(track);
+						if (!controller.start(n, false)) {
+							queue.add(n);
+						}
 						ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
 						channel.sendMessage("Queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
 					}
@@ -1043,38 +1023,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 						if (!tracks.isEmpty()) {
 							// add possible filter to attempt hd vids first
 							AudioTrack track = tracks.get(0);
-							queue.add(new Track() {
-								final AudioTrack handle = track;
-								@Override
-								public @NotNull String getAuthor() {
-									return handle.getInfo().author;
-								}
-
-								@Override
-								public void setPosition(long position) {
-									handle.setPosition(position);
-								}
-
-								@Override
-								public void stop() {
-									handle.stop();
-								}
-
-								@Override
-								public long getDuration() {
-									return handle.getDuration();
-								}
-
-								@Override
-								public @NotNull Object getHandle() {
-									return handle;
-								}
-
-								@Override
-								public @NotNull String getName() {
-									return handle.getInfo().title;
-								}
-							});
+							Track n = transform(track);
+							if (!controller.start(n, false)) {
+								queue.add(n);
+							}
 							ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
 							channel.sendMessage("Queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
 						}
@@ -1082,53 +1034,27 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public void noMatches() {
-						channel.sendMessage("Sorry {0} Unable to play track " + url).queue();					}
+						channel.sendMessage("Sorry unable to play track " + url).queue();					}
 
 					@Override
 					public void loadFailed(FriendlyException exception) {
 						exception.printStackTrace();
-						channel.sendMessage("Sorry {0} Unable to play track " + url).queue();
+						channel.sendMessage("Sorry unable to play track " + url).queue();
 					}
 				});
 			}
 
 			@Override
 			public void load(@NotNull Guppy guppy, @NotNull Channel channel, @NotNull String url) {
+				this.channel = channel;
+				this.voice = guppy.getVoice().getChannel();
 				audioPlayerManager.loadItemOrdered(this, url, new AudioLoadResultHandler() {
 					@Override
 					public void trackLoaded(AudioTrack track) {
-						queue.add(new Track() {
-							final AudioTrack handle = track;
-							@Override
-							public @NotNull String getAuthor() {
-								return handle.getInfo().author;
-							}
-
-							@Override
-							public void setPosition(long position) {
-								handle.setPosition(position);
-							}
-
-							@Override
-							public void stop() {
-								handle.stop();
-							}
-
-							@Override
-							public long getDuration() {
-								return handle.getDuration();
-							}
-
-							@Override
-							public @NotNull Object getHandle() {
-								return handle;
-							}
-
-							@Override
-							public @NotNull String getName() {
-								return handle.getInfo().title;
-							}
-						});
+						Track n = transform(track);
+						if (!controller.start(n, false)) {
+							queue.add(n);
+						}
 						ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
 						channel.sendMessage(guppy.getAsMention() + " queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
 					}
@@ -1139,38 +1065,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 						if (!tracks.isEmpty()) {
 							// add possible filter to attempt hd vids first
 							AudioTrack track = tracks.get(0);
-							queue.add(new Track() {
-								final AudioTrack handle = track;
-								@Override
-								public @NotNull String getAuthor() {
-									return handle.getInfo().author;
-								}
-
-								@Override
-								public void setPosition(long position) {
-									handle.setPosition(position);
-								}
-
-								@Override
-								public void stop() {
-									handle.stop();
-								}
-
-								@Override
-								public long getDuration() {
-									return handle.getDuration();
-								}
-
-								@Override
-								public @NotNull Object getHandle() {
-									return handle;
-								}
-
-								@Override
-								public @NotNull String getName() {
-									return handle.getInfo().title;
-								}
-							});
+							Track n = transform(track);
+							if (!controller.start(n, false)) {
+								queue.add(n);
+							}
 							ParsedTimeFormat timeFormat = ParsedTimeFormat.of(TimeUnit.MILLISECONDS.toSeconds(track.getInfo().length));
 							channel.sendMessage(guppy.getAsMention() + " queued song **" + track.getInfo().title + "** by **" + track.getInfo().author + "** with duration **" + timeFormat.getHours() + ":" + timeFormat.getMinutes() + ":" + timeFormat.getSeconds() + "**").queue();
 						}
@@ -1441,7 +1339,13 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 		@Override
 		public @NotNull MusicPlayer getPlayer() {
-			return null;
+			return player;
+		}
+
+		@Override
+		public @NotNull GuppyAPI setPlayer(@NotNull MusicPlayer player) {
+			this.player = player;
+			return this;
 		}
 
 	}

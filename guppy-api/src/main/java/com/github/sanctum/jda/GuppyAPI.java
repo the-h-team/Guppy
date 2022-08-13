@@ -156,4 +156,11 @@ public interface GuppyAPI extends Service {
 	 */
 	@NotNull MusicPlayer getPlayer();
 
+
+	/**
+	 * @param player
+	 * @return
+	 */
+	@NotNull GuppyAPI setPlayer(@NotNull MusicPlayer player);
+
 }

@@ -1,8 +1,7 @@
 package com.github.sanctum.jda.common;
 
+import com.github.sanctum.panther.container.PantherQueue;
 import java.nio.ByteBuffer;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import javax.annotation.Nullable;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,6 +12,16 @@ public interface MusicPlayer {
 	@NotNull Queue getQueue();
 
 	@NotNull SendHandler getSendHandler();
+
+	@Nullable Channel LastAlerted();
+
+	@Nullable Channel LastSummoned();
+
+	void setSendHandler(@NotNull SendHandler handler);
+
+	void setListener(@NotNull Listener listener);
+
+	void resetListener();
 
 	void stop();
 
@@ -48,13 +57,17 @@ public interface MusicPlayer {
 
 	interface Listener {
 
-		default void onStart(Controller controller, Track track) {}
+		default void onStart(Controller controller, Track track) {
+		}
 
-		default void onEnd(Controller controller, Track track, Result result) {}
+		default void onEnd(Controller controller, Track track, Result result) {
+		}
 
-		default void onPause(Controller controller) {}
+		default void onPause(Controller controller) {
+		}
 
-		default void onResume(Controller controller) {}
+		default void onResume(Controller controller) {
+		}
 
 		enum Result {
 			FINISHED(true),
@@ -64,6 +77,7 @@ public interface MusicPlayer {
 			CLEANUP(false);
 
 			boolean mayStart;
+
 			Result(boolean mayStart) {
 				this.mayStart = mayStart;
 			}
@@ -77,28 +91,22 @@ public interface MusicPlayer {
 
 	class Queue {
 
-		private final Controller player;
-		private final BlockingQueue<Track> queue;
+		private final PantherQueue<Track> queue;
 
-		public Queue(@NotNull Controller player) {
-			this.player = player;
-			this.queue = new LinkedBlockingQueue<>();
+		public Queue() {
+			this.queue = new PantherQueue<>();
 		}
 
 		public Queue add(@NotNull Track track) {
-			if (!player.start(track, false)) {
-				queue.offer(track);
-			}
+			queue.add(track);
 			return this;
 		}
 
-		public Track next() {
-			Track t;
-			player.start(t = queue.poll(), true);
-			return t;
+		public Track poll() {
+			return queue.pollNow();
 		}
 
-		public BlockingQueue<Track> get() {
+		public PantherQueue<Track> get() {
 			return queue;
 		}
 
