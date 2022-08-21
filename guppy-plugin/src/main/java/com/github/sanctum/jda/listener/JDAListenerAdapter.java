@@ -969,7 +969,7 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 
 	@Override
 	public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent e) {
-		Command test = api.getCommand(e.getName());
+		Command test = api.getCommands().get(e.getName());
 		if (test != null) {
 			Command.Options options = test.getOptions();
 			if (options.get().size() > 0) {

@@ -19,8 +19,8 @@
     <properties>
         <java.version>1.8</java.version>
         <project.version>${version}</project.version>
-        <labyrinth.version>1.8.0-SNAPSHOT</labyrinth.version>
-        <panther.version>1.0.0.R10-SNAPSHOT</panther.version>
+        <labyrinth.version>1.8.1</labyrinth.version>
+        <panther.version>1.0.0</panther.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 

@@ -18,7 +18,7 @@ public class GuppyCommandProcessor {
 			Guppy.Message message = e.getMessage();
 			String text = message.getText();
 			if (text.startsWith("/")) {
-				Command c = GuppyAPI.getInstance().getCommand(text.split(" ")[0].replace("/", ""));
+				Command c = GuppyAPI.getInstance().getCommands().get(text.split(" ")[0].replace("/", ""));
 				if (c != null) {
 					List<String> list = new ArrayList<>(Arrays.asList(text.split(" ")));
 					list.removeIf(s -> new PantherString(s).contains("/" + c.getLabel()));

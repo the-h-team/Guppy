@@ -112,7 +112,7 @@ public final class DockingAgent {
 					}
 				});
 				PantherCollection<SlashCommandData> data = new PantherList<>();
-				for (Command c : GuppyAPI.getInstance().getCommands()) {
+				for (Command c : GuppyAPI.getInstance().getCommands().getAll()) {
 					SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
 					for (Command.Option o : c.getOptions().get()) {
 						OptionType type = OptionTypeConverter.get(o);

@@ -2,6 +2,7 @@ package com.github.sanctum.jda;
 
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
+import com.github.sanctum.jda.common.CommandController;
 import com.github.sanctum.jda.common.EmbeddedMessage;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.GuppyConfigurable;
@@ -21,21 +22,19 @@ import com.github.sanctum.jda.util.DefaultAudioSendHandler;
 import com.github.sanctum.jda.util.InvalidGuppyStateException;
 import com.github.sanctum.jda.util.OptionTypeConverter;
 import com.github.sanctum.panther.annotation.Comment;
-import com.github.sanctum.panther.annotation.Note;
 import com.github.sanctum.panther.container.ImmutablePantherCollection;
 import com.github.sanctum.panther.container.PantherCollection;
 import com.github.sanctum.panther.container.PantherCollectors;
 import com.github.sanctum.panther.container.PantherEntryMap;
 import com.github.sanctum.panther.container.PantherList;
 import com.github.sanctum.panther.container.PantherMap;
+import com.github.sanctum.panther.container.PantherSet;
 import com.github.sanctum.panther.event.Vent;
 import com.github.sanctum.panther.event.VentMap;
 import com.github.sanctum.panther.file.Configurable;
 import com.github.sanctum.panther.file.JsonConfiguration;
 import com.github.sanctum.panther.recursive.ServiceFactory;
-import com.github.sanctum.panther.util.Check;
 import com.github.sanctum.panther.util.Deployable;
-import com.github.sanctum.panther.util.DeployableMapping;
 import com.github.sanctum.panther.util.PantherLogger;
 import com.github.sanctum.panther.util.ParsedTimeFormat;
 import com.github.sanctum.panther.util.SimpleAsynchronousTask;
@@ -50,19 +49,14 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.sql.Time;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -85,13 +79,13 @@ import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.NewsChannel;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.VoiceChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.requests.restaction.ChannelAction;
 import net.dv8tion.jda.api.utils.ChunkingFilter;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
@@ -104,7 +98,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		this.logger = logger;
 	}
 
-	static final PantherMap<String, ConsoleCommand> commands = new PantherEntryMap<>();
+	static final PantherMap<String, ConsoleCommand> consoleCommands = new PantherEntryMap<>();
 	static GuppyEntryPoint entryPoint;
 	static MainPanel main;
 	JDA jda;
@@ -113,7 +107,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	boolean active;
 	final Logger logger;
 	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
-	ImmutablePantherCollection.Builder<Command> commandSupplier = ImmutablePantherCollection.builder();
+	final PantherCollection<Command> commandSupplier = new PantherSet<>();
 
 	public void enable(@Nullable DockingAgent dockingAgent) throws InterruptedException, InvalidGuppyStateException {
 		if (active) throw new InvalidGuppyStateException("Guppy already running!");
@@ -151,7 +145,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		active = false;
 		jda.shutdown();
 		guppySupplier = ImmutablePantherCollection.builder();
-		commandSupplier = ImmutablePantherCollection.builder();
+		commandSupplier.clear();
 	}
 
 	@NotNull
@@ -756,13 +750,28 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return new Role() {
 
 			@Override
+			public com.github.sanctum.jda.common.@NotNull Permission[] getPermissions() {
+				Permission[] ar = role.getPermissions().stream().toArray(Permission[]::new);
+				com.github.sanctum.jda.common.Permission[] n = new com.github.sanctum.jda.common.Permission[ar.length];
+				for (int i = 0; i < ar.length; i++) {
+					n[i] = com.github.sanctum.jda.common.Permission.valueOf(ar[i].name());
+				}
+				return n;
+			}
+
+			@Override
 			public @NotNull String getName() {
 				return role.getName();
 			}
 
 			@Override
 			public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-				return null;
+				return Deployable.of(() -> {
+					for (Guppy g : GuppyAPI.getInstance().getGuppies()) {
+						if (g.getRole(getName()) != null) g.sendMessage(message).queue();
+					}
+					return null;
+				}, 1);
 			}
 
 			@Override
@@ -796,11 +805,6 @@ public final class GuppyEntryPoint implements Vent.Host {
 		};
 	}
 
-	@Note("Used to load commands into cache.")
-	public void newCommand(@NotNull Command command) {
-		commandSupplier.add(command);
-	}
-
 	public @NotNull Guppy getGuppy(@NotNull User u) {
 		return Optional.ofNullable(api.getGuppy(u.getIdLong())).orElse(newGuppy(u));
 	}
@@ -812,6 +816,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
+		private CommandController commands;
 		MusicPlayer player = new MusicPlayer() {
 
 			private final AudioPlayer player;
@@ -819,6 +824,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			private final Queue queue;
 			private Channel channel, voice;
 			private DefaultAudioListener listener;
+
 			private SendHandler sendWrapper;
 			private final AudioPlayerManager audioPlayerManager;
 
@@ -1166,6 +1172,122 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 		};
 
+		{
+			this.commands = new CommandController() {
+				@Override
+				public @Nullable Command get(@NotNull String label) {
+					return getAll().stream().filter(c -> c.getLabel().equalsIgnoreCase(label)).findFirst().orElse(null);
+				}
+
+				@Override
+				public @NotNull PantherCollection<Command> getAll() {
+					return commandSupplier;
+				}
+
+				@Override
+				public @NotNull Deployable<Void> refresh() {
+					return Deployable.of(() -> {
+						PantherCollection<SlashCommandData> data = new PantherList<>();
+						for (Command c : getAll()) {
+							SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
+							for (Command.Option o : c.getOptions().get()) {
+								OptionType type = OptionTypeConverter.get(o);
+								slashCommand.addOption(type, o.getName(), o.getDescription());
+							}
+							slashCommand.setGuildOnly(true);
+							data.add(slashCommand);
+						}
+						// clear cache.
+						jda.updateCommands().queue();
+						jda.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
+						return null;
+					}, 1);
+				}
+
+				@Override
+				public @NotNull Deployable<Void> add(@NotNull Command command) {
+					return Deployable.of(() -> {
+						commandSupplier.add(command);
+					}, 1);
+				}
+
+				@Override
+				public @NotNull Deployable<Void> remove(@NotNull Command command) {
+					return Deployable.of(() -> {
+						commandSupplier.remove(command);
+					}, 1);
+				}
+			};
+		}
+
+		@Override
+		public @NotNull Guppy newGuppy(@NotNull Object user) {
+			if (user instanceof User) {
+				return GuppyEntryPoint.this.getGuppy((User) user);
+			}
+			return new Guppy() {
+				@Override
+				public @NotNull String getTag() {
+					return null;
+				}
+
+				@Override
+				public @NotNull String getAsMention() {
+					return null;
+				}
+
+				@Override
+				public @NotNull String getAvatarUrl() {
+					return null;
+				}
+
+				@Override
+				public @Nullable Link getLink() {
+					return null;
+				}
+
+				@Override
+				public @NotNull Voice getVoice() {
+					return null;
+				}
+
+				@Override
+				public @NotNull Role[] getRoles() {
+					return new Role[0];
+				}
+
+				@Override
+				public @Nullable Role getRole(@NotNull String name) {
+					return null;
+				}
+
+				@Override
+				public @Nullable Role getRole(long id) {
+					return null;
+				}
+
+				@Override
+				public Deployable<Void> setLink(@NotNull Link link) {
+					return null;
+				}
+
+				@Override
+				public long getId() {
+					return 0;
+				}
+
+				@Override
+				public Deployable<Message> sendMessage(@NotNull String message) {
+					return null;
+				}
+
+				@Override
+				public @NotNull String getName() {
+					return null;
+				}
+			};
+		}
+
 		@Override
 		public @Nullable Guppy getGuppy(@NotNull String name, boolean isMention) {
 			Stream<Guppy> guppieStream;
@@ -1198,45 +1320,177 @@ public final class GuppyEntryPoint implements Vent.Host {
 		}
 
 		@Override
-		public @NotNull Channel newChannel(@NotNull String name, long categoryId) {
-			Channel test = getChannel(name);
-			if (test != null) return test;
-			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
-			if (categoryId > 0) {
-				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name, getJDA().getCategoryById(categoryId)).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.submit().join());
-			} else {
-				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name).addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.submit().join());
+		public @NotNull Channel newChannel(@NotNull Object channel) {
+			if (channel instanceof AudioChannel) {
+				return GuppyEntryPoint.this.newChannel((AudioChannel) channel);
 			}
-		}
+			if (channel instanceof MessageChannel) {
+				return GuppyEntryPoint.this.newChannel((MessageChannel) channel);
+			}
+			return new Channel() {
+				@Override
+				public @Nullable Thread getThread(@NotNull String name) {
+					return null;
+				}
 
-		public Channel memberInitialize(Guild guild, User user, String name, long categoryId) {
-			Member member = guild.getMember(user);
-			if (categoryId > 0) {
-				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name, getJDA().getCategoryById(categoryId))
-						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
-						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.addPermissionOverride(getJDA().getRoleById(751689293721895013L), Arrays.asList(Permission.values()), null)
-						.addPermissionOverride(getJDA().getRoleById(570087140457840640L), Arrays.asList(Permission.values()), null)
-						.submit().join());
-			} else {
-				return GuppyEntryPoint.this.newChannel(guild.createTextChannel(name)
-						.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
-						.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
-						.addPermissionOverride(getJDA().getRoleById(751689293721895013L), Arrays.asList(Permission.values()), null)
-						.addPermissionOverride(getJDA().getRoleById(570087140457840640L), Arrays.asList(Permission.values()), null)
-						.submit().join());
-			}
+				@Override
+				public @Nullable Thread getThread(long id) {
+					return null;
+				}
+
+				@Override
+				public @NotNull PantherCollection<Thread> getThreads() {
+					return null;
+				}
+
+				@Override
+				public boolean isPrivate() {
+					return false;
+				}
+
+				@Override
+				public boolean isNews() {
+					return false;
+				}
+
+				@Override
+				public boolean isVoice() {
+					return false;
+				}
+
+				@Override
+				public void setName(@NotNull String newName) {
+
+				}
+
+				@Override
+				public void delete() {
+
+				}
+
+				@Override
+				public Deployable<Void> open() {
+					return null;
+				}
+
+				@Override
+				public Deployable<Void> close() {
+					return null;
+				}
+
+				@Override
+				public long getId() {
+					return 0;
+				}
+
+				@Override
+				public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
+					return null;
+				}
+
+				@Override
+				public @NotNull String getName() {
+					return null;
+				}
+			};
 		}
 
 		@Override
-		public @NotNull Channel newChannel(@NotNull Guppy guppy, @NotNull String name, long categoryId) {
+		public @NotNull Channel newChannel(@NotNull String name, long categoryId, Role.Attachment... attachments) {
+			Channel test = getChannel(name);
+			if (test != null) return test;
+			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+			return initialize(guild, name, categoryId, attachments);
+		}
+
+		public Channel initialize(Guild guild, String name, long categoryId, Role.Attachment... roles) {
+			ChannelAction<TextChannel> action;
+			if (categoryId > 0) {
+				action = guild.createTextChannel(name, getJDA().getCategoryById(categoryId));
+
+			} else {
+				action = guild.createTextChannel(name);
+			}
+			for (Role.Attachment r : roles) {
+				List<Permission> permissions = new ArrayList<>();
+				for (com.github.sanctum.jda.common.Permission p : r.getPermissions()) {
+					permissions.add(Permission.valueOf(p.name()));
+				}
+				action.addPermissionOverride(getJDA().getRoleById(r.getRole().getId()), permissions, null);
+			}
+			return GuppyEntryPoint.this.newChannel(action
+					.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+					.submit().join());
+		}
+
+		public Channel memberInitialize(Guild guild, User user, String name, long categoryId, Role.Attachment... roles) {
+			Member member = guild.getMember(user);
+			ChannelAction<TextChannel> action;
+			if (categoryId > 0) {
+				action = guild.createTextChannel(name, getJDA().getCategoryById(categoryId));
+
+			} else {
+				action = guild.createTextChannel(name);
+			}
+			for (Role.Attachment r : roles) {
+				List<Permission> permissions = new ArrayList<>();
+				for (com.github.sanctum.jda.common.Permission p : r.getPermissions()) {
+					permissions.add(Permission.valueOf(p.name()));
+				}
+				action.addPermissionOverride(getJDA().getRoleById(r.getRole().getId()), permissions, null);
+			}
+			return GuppyEntryPoint.this.newChannel(action
+					.addPermissionOverride(member, EnumSet.of(Permission.VIEW_CHANNEL), null)
+					.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+					.submit().join());
+		}
+
+		public Channel membersInitialize(Guild guild, User[] user, String name, long categoryId, Role.Attachment... roles) {
+			Member[] members = new Member[user.length];
+			for (int i = 0; i < user.length; i++) {
+				members[i] = guild.getMember(user[i]);
+			}
+			ChannelAction<TextChannel> action;
+			if (categoryId > 0) {
+				action = guild.createTextChannel(name, getJDA().getCategoryById(categoryId));
+
+			} else {
+				action = guild.createTextChannel(name);
+			}
+			for (Role.Attachment r : roles) {
+				List<Permission> permissions = new ArrayList<>();
+				for (com.github.sanctum.jda.common.Permission p : r.getPermissions()) {
+					permissions.add(Permission.valueOf(p.name()));
+				}
+				action.addPermissionOverride(getJDA().getRoleById(r.getRole().getId()), permissions, null);
+			}
+			for (Member m : members) {
+				action.addPermissionOverride(m, EnumSet.of(Permission.VIEW_CHANNEL), null);
+			}
+			return GuppyEntryPoint.this.newChannel(action
+					.addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
+					.submit().join());
+		}
+
+		@Override
+		public @NotNull Channel newChannel(@NotNull String name, long categoryId, @NotNull Guppy guppy, Role.Attachment... attachments) {
 			Channel test = getChannel(name);
 			if (test != null) return test;
 			User match = getJDA().getUserById(guppy.getId());
 			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
-			return memberInitialize(guild, match, name, categoryId);
+			return memberInitialize(guild, match, name, categoryId, attachments);
+		}
+
+		@Override
+		public @NotNull Channel newChannel(@NotNull String name, long categoryId, @NotNull Guppy[] guppies, Role.Attachment... attachments) {
+			Channel test = getChannel(name);
+			if (test != null) return test;
+			User[] users = new User[guppies.length];
+			for (int i = 0; i < guppies.length; i++) {
+				users[i] = getJDA().getUserById(guppies[i].getId());
+			}
+			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+			return membersInitialize(guild, users, name, categoryId, attachments);
 		}
 
 		@Override
@@ -1248,33 +1502,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 		}
 
 		@Override
-		public @Nullable Command getCommand(@NotNull String label) {
-			return getCommands().stream().filter(c -> c.getLabel().equalsIgnoreCase(label)).findFirst().orElse(null);
-		}
-
-		@Override
-		public @NotNull PantherCollection<Command> getCommands() {
-			return commandSupplier.build();
-		}
-
-		@Override
-		public @NotNull Deployable<Void> updateCommands() {
-			return Deployable.of(() -> {
-				PantherCollection<SlashCommandData> data = new PantherList<>();
-				for (Command c : getCommands()) {
-					SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
-					for (Command.Option o : c.getOptions().get()) {
-						OptionType type = OptionTypeConverter.get(o);
-						slashCommand.addOption(type, o.getName(), o.getDescription());
-					}
-					slashCommand.setGuildOnly(true);
-					data.add(slashCommand);
-				}
-				// clear cache.
-				jda.updateCommands().queue();
-				jda.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
-				return null;
-			}, 1);
+		public @NotNull CommandController getCommands() {
+			return commands;
 		}
 
 		@Override
@@ -1351,7 +1580,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	}
 
 	public static PantherCollection<ConsoleCommand> getConsoleCommands() {
-		return commands.values();
+		return consoleCommands.values();
 	}
 
 	public static @NotNull("Main panel not loaded!") MainPanel getMainPanel() {
@@ -1360,7 +1589,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 	@Comment("This method handles application stuff.")
 	public static void main(String[] args) {
-		commands.put("stop", new StopConsoleCommand());
+		consoleCommands.put("stop", new StopConsoleCommand());
 
 		// open gui
 		JFrame window = new JFrame();
@@ -1434,7 +1663,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 				@Override
 				public void onFinalize(@NotNull JDA instance) {
 					PantherCollection<SlashCommandData> data = new PantherList<>();
-					for (Command c : GuppyAPI.getInstance().getCommands()) {
+					for (Command c : GuppyAPI.getInstance().getCommands().getAll()) {
 						SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
 						for (Command.Option o : c.getOptions().get()) {
 							OptionType type = OptionTypeConverter.get(o);
