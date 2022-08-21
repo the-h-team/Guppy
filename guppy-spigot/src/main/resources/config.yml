@@ -7,10 +7,10 @@
 #--------------------------------------------------------------------------------------
 # Provide the unique token for your bot from the discord developer portal.
 # Make sure you have activated privileged intents & allowed scopes applications.commands and bot.
-token: 'NzgwNTc4MTU4NTk2NDU2NDc4.Gn9bdA.VRO7jloqcXNzeW-nh6EkJQSQbm3C1LF85OMdNI'
+token: '{TOKEN}'
 #
 # Use your guild's id here!
-guild: 570063954118836245
+guild: 0000000000000000
 #
 # The estimated size of your discord server. Used to determine member caching responsibility.
 estimated-size: 200
@@ -24,5 +24,5 @@ channels:
   commands:
     #
     #
-    id: 671895225924321281
+    id: 0000000000000000
 #--------------------------------------------------------------------------------------
