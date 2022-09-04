@@ -24,6 +24,10 @@ public interface Guppy extends Identifiable, Mailable {
 
 	@Nullable Role getRole(long id);
 
+	void inherit(@NotNull Role... roles);
+
+	void revoke(@NotNull Role... roles);
+
 	Deployable<Void> setLink(@NotNull Link link);
 
 	interface Message {
@@ -78,11 +82,12 @@ public interface Guppy extends Identifiable, Mailable {
 
 	abstract class Link implements Nameable {
 
-		public abstract @NotNull String getName();
-
 		public abstract @NotNull UUID getId();
 
 		public abstract Deployable<Void> sendMessage(@NotNull Object... components);
+
+
+
 	}
 
 }

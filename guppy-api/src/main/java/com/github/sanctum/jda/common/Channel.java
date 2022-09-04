@@ -15,6 +15,8 @@ public interface Channel extends Connectable, Identifiable, Mailable {
 
 	@NotNull PantherCollection<Thread> getThreads();
 
+	@NotNull PantherCollection<Guppy.Message> getHistory();
+
 	boolean isPrivate();
 
 	boolean isNews();

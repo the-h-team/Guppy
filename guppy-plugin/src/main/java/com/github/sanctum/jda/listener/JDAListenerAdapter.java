@@ -96,6 +96,11 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 							}
 
 							@Override
+							public @NotNull PantherCollection<Guppy.Message> getHistory() {
+								return new PantherList<>();
+							}
+
+							@Override
 							public boolean isPrivate() {
 								return true;
 							}
@@ -343,6 +348,11 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 							}
 
 							@Override
+							public @NotNull PantherCollection<Guppy.Message> getHistory() {
+								return new PantherList<>();
+							}
+
+							@Override
 							public boolean isPrivate() {
 								return true;
 							}
@@ -505,6 +515,11 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 
 							@Override
 							public @NotNull PantherCollection<Thread> getThreads() {
+								return new PantherList<>();
+							}
+
+							@Override
+							public @NotNull PantherCollection<Guppy.Message> getHistory() {
 								return new PantherList<>();
 							}
 
@@ -684,6 +699,11 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 
 								@Override
 								public @NotNull PantherCollection<Thread> getThreads() {
+									return new PantherList<>();
+								}
+
+								@Override
+								public @NotNull PantherCollection<Guppy.Message> getHistory() {
 									return new PantherList<>();
 								}
 

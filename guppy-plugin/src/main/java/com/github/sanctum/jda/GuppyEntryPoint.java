@@ -47,6 +47,7 @@ import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+import java.awt.*;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.text.MessageFormat;
@@ -75,6 +76,7 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.NewsChannel;
 import net.dv8tion.jda.api.entities.TextChannel;
@@ -84,6 +86,7 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.managers.RoleManager;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.ChannelAction;
 import net.dv8tion.jda.api.utils.ChunkingFilter;
@@ -195,6 +198,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public @NotNull PantherCollection<Thread> getThreads() {
+						return new PantherList<>();
+					}
+
+					@Override
+					public @NotNull PantherCollection<Guppy.Message> getHistory() {
 						return new PantherList<>();
 					}
 
@@ -415,7 +423,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public @NotNull Role[] getRoles() {
-				return jda.getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong()).getRoles().stream().map(GuppyEntryPoint.this::newRole).toArray(Role[]::new);
+				Member m = getGuild().getMember(u);
+				return m.getRoles().stream().map(GuppyEntryPoint.this::newRole).toArray(Role[]::new);
 			}
 
 			@Override
@@ -426,6 +435,20 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @Nullable Role getRole(long id) {
 				return Arrays.stream(getRoles()).filter(r -> r.getId() == id).findFirst().orElse(null);
+			}
+
+			@Override
+			public void inherit(@NotNull Role... roles) {
+				for (Role r : roles) {
+					getGuild().addRoleToMember(u, jda.getRoleById(r.getId())).queueAfter(2, TimeUnit.MILLISECONDS);
+				}
+			}
+
+			@Override
+			public void revoke(@NotNull Role... roles) {
+				for (Role r : roles) {
+					getGuild().removeRoleFromMember(u, jda.getRoleById(r.getId())).queueAfter(2, TimeUnit.MILLISECONDS);
+				}
 			}
 
 			@Override
@@ -583,6 +606,156 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public @NotNull PantherCollection<Guppy.Message> getHistory() {
+				return t.getHistory().getRetrievedHistory().stream().map(message -> new Guppy.Message() {
+					@Override
+					public @NotNull String getText() {
+						return message.getContentRaw();
+					}
+
+					@Override
+					public @Nullable Channel getChannel() {
+						return GuppyEntryPoint.this.newChannel(message.getChannel());
+					}
+
+					@Override
+					public @Nullable Channel.Thread getThread() {
+						return new Thread() {
+							@Override
+							public boolean isOwned() {
+								return message.getChannel().getName().contains("THREAD") && !message.getStartedThread().isOwner();
+							}
+
+							@Override
+							public @Nullable Guppy getOwner() {
+								return api.getGuppy(message.getStartedThread().getOwnerIdLong());
+							}
+
+							@Override
+							public @NotNull Channel getParent() {
+								return null;
+							}
+
+							@Override
+							public void delete() {
+
+							}
+
+							@Override
+							public long getId() {
+								return 0;
+							}
+
+							@Override
+							public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
+								return null;
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return message.getStartedThread().getName();
+							}
+						};
+					}
+
+					@Override
+					public @NotNull Reaction[] getReactions() {
+						return message.getReactions().stream().map(GuppyEntryPoint.this::newReaction).toArray(Reaction[]::new);
+					}
+
+					@Override
+					public @NotNull EmbeddedMessage[] getAttached() {
+						return message.getEmbeds().stream().map(messageEmbed -> new EmbeddedMessage() {
+							@Override
+							public @Nullable String getHeader() {
+								return messageEmbed.getTitle();
+							}
+
+							@Override
+							public @Nullable Color getColor() {
+								return messageEmbed.getColor();
+							}
+
+							@Override
+							public @NotNull Image getImage() {
+								return () -> messageEmbed.getImage().getUrl();
+							}
+
+							@Override
+							public @Nullable Thumbnail getThumbnail() {
+								return () -> messageEmbed.getThumbnail().getUrl();
+							}
+
+							@Override
+							public @Nullable String getDescription() {
+								return messageEmbed.getDescription();
+							}
+
+							@Override
+							public @Nullable Guppy getAuthor() {
+								return api.getGuppy(messageEmbed.getAuthor().getName().split("#")[0], false);
+							}
+
+							@Override
+							public @Nullable Footer getFooter() {
+								return new Footer() {
+									@Override
+									public @Nullable String getIconUrl() {
+										return messageEmbed.getFooter().getIconUrl();
+									}
+
+									@Override
+									public @NotNull String getText() {
+										return messageEmbed.getFooter().getText();
+									}
+								};
+							}
+
+							@Override
+							public @NotNull Field[] getFields() {
+								return messageEmbed.getFields().stream().map(field -> new Field() {
+									@Override
+									public @NotNull String getValue() {
+										return field.getValue();
+									}
+
+									@Override
+									public boolean inline() {
+										return field.isInline();
+									}
+
+									@Override
+									public @NotNull String getName() {
+										return field.getName();
+									}
+								}).toArray(Field[]::new);
+							}
+						}).toArray(EmbeddedMessage[]::new);
+					}
+
+					@Override
+					public @Nullable Reaction getReaction(@NotNull String code) {
+						return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+					}
+
+					@Override
+					public void add(@NotNull Reaction reaction) {
+
+					}
+
+					@Override
+					public void take(@NotNull Reaction reaction) {
+
+					}
+
+					@Override
+					public void delete() {
+
+					}
+				}).collect(PantherCollectors.toList());
+			}
+
+			@Override
 			public boolean isPrivate() {
 				return false;
 			}
@@ -706,6 +879,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public @NotNull PantherCollection<Guppy.Message> getHistory() {
+				return new PantherList<>();
+			}
+
+			@Override
 			public boolean isPrivate() {
 				return false;
 			}
@@ -757,6 +935,26 @@ public final class GuppyEntryPoint implements Vent.Host {
 					n[i] = com.github.sanctum.jda.common.Permission.valueOf(ar[i].name());
 				}
 				return n;
+			}
+
+			@Override
+			public void permit(com.github.sanctum.jda.common.@NotNull Permission... permissions) {
+				final RoleManager manager = role.getManager();
+				for (com.github.sanctum.jda.common.Permission permission : permissions) {
+					if (!role.hasPermission(Permission.valueOf(permission.name()))) {
+						manager.givePermissions(Permission.valueOf(permission.name())).queue();
+					}
+				}
+			}
+
+			@Override
+			public void revoke(com.github.sanctum.jda.common.@NotNull Permission... permissions) {
+				final RoleManager manager = role.getManager();
+				for (com.github.sanctum.jda.common.Permission permission : permissions) {
+					if (role.hasPermission(Permission.valueOf(permission.name()))) {
+						manager.revokePermissions(Permission.valueOf(permission.name())).queue();
+					}
+				}
 			}
 
 			@Override
@@ -1267,6 +1465,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 				}
 
 				@Override
+				public void inherit(@NotNull Role... roles) {
+
+				}
+
+				@Override
+				public void revoke(@NotNull Role... roles) {
+
+				}
+
+				@Override
 				public Deployable<Void> setLink(@NotNull Link link) {
 					return null;
 				}
@@ -1340,6 +1548,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 				@Override
 				public @NotNull PantherCollection<Thread> getThreads() {
+					return null;
+				}
+
+				@Override
+				public @NotNull PantherCollection<Guppy.Message> getHistory() {
 					return null;
 				}
 
