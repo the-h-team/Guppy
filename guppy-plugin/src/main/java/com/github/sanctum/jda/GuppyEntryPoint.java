@@ -15,7 +15,9 @@ import com.github.sanctum.jda.listener.JDAListenerAdapter;
 import com.github.sanctum.jda.loading.DockingAgent;
 import com.github.sanctum.jda.ui.api.ConsoleCommand;
 import com.github.sanctum.jda.ui.api.JDAInput;
+import com.github.sanctum.jda.ui.content.AddonConsoleCommand;
 import com.github.sanctum.jda.ui.content.MainPanel;
+import com.github.sanctum.jda.ui.content.StartConsoleCommand;
 import com.github.sanctum.jda.ui.content.StopConsoleCommand;
 import com.github.sanctum.jda.util.DefaultAudioListener;
 import com.github.sanctum.jda.util.DefaultAudioSendHandler;
@@ -48,6 +50,7 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import java.awt.*;
+import java.io.Console;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.text.MessageFormat;
@@ -57,6 +60,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -111,6 +115,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 	final Logger logger;
 	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
 	final PantherCollection<Command> commandSupplier = new PantherSet<>();
+
+	static {
+		consoleCommands.put("stop", new StopConsoleCommand());
+		consoleCommands.put("start", new StartConsoleCommand());
+		consoleCommands.put("addon", new AddonConsoleCommand());
+	}
 
 	public void enable(@Nullable DockingAgent dockingAgent) throws InterruptedException, InvalidGuppyStateException {
 		if (active) throw new InvalidGuppyStateException("Guppy already running!");
@@ -1011,6 +1021,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return entryPoint;
 	}
 
+	public static void setInstance(@NotNull GuppyEntryPoint e) {
+		entryPoint = e;
+	}
+
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
@@ -1802,8 +1816,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 	@Comment("This method handles application stuff.")
 	public static void main(String[] args) {
-		consoleCommands.put("stop", new StopConsoleCommand());
 
+		/*
 		// open gui
 		JFrame window = new JFrame();
 		window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -1817,22 +1831,23 @@ public final class GuppyEntryPoint implements Vent.Host {
 		window.pack();
 		window.setLocationRelativeTo(null);
 		window.setVisible(true);
-		JDAInput input = new JDAInput();
-		String test = JOptionPane.showInputDialog("Enter your bot token.");
-		if (test == null || test.isEmpty())
-			test = JOptionPane.showInputDialog("Bot token required! Please provide one");
-		input.setToken(test);
-		String[] s = new String[]{"A.) Watching", "B.) Competing", "C.) Playing", "D.) Listening"};
-		input.setActivity(s[JOptionPane.showOptionDialog(null,
-				"Now select a status type.",
-				"Good....",
-				JOptionPane.DEFAULT_OPTION,
-				JOptionPane.INFORMATION_MESSAGE,
-				null,
-				s,
-				s[0])]);
-		input.setActivityMessage(JOptionPane.showInputDialog("Now enter a status message."));
-		Activity activity = Activity.watching("Aqua Teen Hunger Force.");
+		 */
+		//JDAInput input = new JDAInput();
+		//String test = JOptionPane.showInputDialog("Enter your bot token.");
+		//if (test == null || test.isEmpty())
+			//test = JOptionPane.showInputDialog("Bot token required! Please provide one");
+		//input.setToken("NzgwNTc4MTU4NTk2NDU2NDc4.GyX1mM.oZ8pFvF6aUHO1kOhwa_WcUbt7EAl6nnk150MVQ");
+		//String[] s = new String[]{"A.) Watching", "B.) Competing", "C.) Playing", "D.) Listening"};
+		//input.setActivity(s[JOptionPane.showOptionDialog(null,
+				//"Now select a status type.",
+				//"Good....",
+				//JOptionPane.DEFAULT_OPTION,
+				//JOptionPane.INFORMATION_MESSAGE,
+				//null,
+				//s,
+				//s[0])]);
+		//input.setActivityMessage(JOptionPane.showInputDialog("Now enter a status message."));
+		/*
 		switch (input.getActivity().toLowerCase(Locale.ROOT)) {
 			case "a.) watching":
 				activity = Activity.watching(input.getActivityMessage());
@@ -1847,62 +1862,19 @@ public final class GuppyEntryPoint implements Vent.Host {
 				activity = Activity.listening(input.getActivityMessage());
 				break;
 		}
-
-		SimpleAsynchronousTask.runLater(() -> {
-			main.getConsole().sendMessage("Say " + '"' + "stop" + '"' + " or " + '"' + "exit" + '"' + " to close this application.");
-		}, TimeUnit.SECONDS.toMillis(3));
-
-		SimpleAsynchronousTask.runLater(() -> {
-			main.getConsole().sendMessage("---------------------------");
-		}, TimeUnit.SECONDS.toMillis(4));
-
-		entryPoint = new GuppyEntryPoint(PantherLogger.getInstance().getLogger());
-		try {
-			Activity finalActivity = activity;
-			entryPoint.enable(new DockingAgent().consume(new DockingAgent.Procedure() {
-				@Override
-				public void onConstruct(@NotNull JDABuilder builder) {
-					builder.setToken(input.getToken());
-					builder.enableIntents(Arrays.asList(GatewayIntent.values()));
-					builder.setActivity(finalActivity);
-					builder.addEventListeners(new JDAListenerAdapter());
-					builder.enableCache(CacheFlag.ACTIVITY, CacheFlag.EMOJI, CacheFlag.VOICE_STATE, CacheFlag.ONLINE_STATUS);
-
-					builder.setChunkingFilter(ChunkingFilter.ALL);
-					builder.setMemberCachePolicy(MemberCachePolicy.ALL);
-					builder.setLargeThreshold(300);
-				}
-
-				@Override
-				public void onFinalize(@NotNull JDA instance) {
-					PantherCollection<SlashCommandData> data = new PantherList<>();
-					for (Command c : GuppyAPI.getInstance().getCommands().getAll()) {
-						SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
-						for (Command.Option o : c.getOptions().get()) {
-							OptionType type = OptionTypeConverter.get(o);
-							slashCommand.addOption(type, o.getName(), o.getDescription());
-						}
-						slashCommand.setGuildOnly(true);
-						data.add(slashCommand);
-					}
-					// clear cache.
-					instance.updateCommands().queue();
-					instance.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
-				}
-			}));
-			main.setJda(entryPoint.jda);
-		} catch (InterruptedException | InvalidGuppyStateException e) {
-			e.printStackTrace();
-			main.getConsole().sendMessage("Bot failed to activate.");
-			main.getConsole().sendMessage("Reason: " + e.getMessage());
-			main.getConsole().sendMessage("---------------------------");
-			return;
+		 */
+		Console inputReader = System.console();
+		System.out.println("Awaiting input...");
+		while(true) {
+			String inputLine = inputReader.readLine();
+			if (inputLine == null) break;
+			String label = inputLine.replace("/", "").split(" ")[0];
+			GuppyEntryPoint.getConsoleCommands().forEach(cmd -> {
+				if (cmd.getLabel().equalsIgnoreCase(label) || cmd.getAliases().stream().anyMatch(label::equalsIgnoreCase))
+					cmd.execute(Arrays.stream(inputLine.replace("/", "").split(" ")).filter(s -> !s.equalsIgnoreCase(cmd.getLabel()) && cmd.getAliases().stream().noneMatch(s::equalsIgnoreCase)).toArray(String[]::new));
+			});
 		}
 
-		SimpleAsynchronousTask.runLater(() -> {
-			main.getConsole().sendMessage("Bot active.");
-			main.getConsole().sendMessage("---------------------------");
-		}, TimeUnit.SECONDS.toMillis(5));
 	}
 
 }
