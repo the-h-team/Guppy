@@ -1,9 +1,7 @@
-package com.github.sanctum.jda.ui.content;
+package com.github.sanctum.jda.common.content;
 
-import com.github.sanctum.jda.ui.util.TaskScheduler;
-import com.github.sanctum.jda.ui.util.TextAreaOutputStream;
-import com.github.sanctum.panther.container.PantherCollection;
-import com.github.sanctum.panther.container.PantherList;
+import com.github.sanctum.jda.GuppyEntryPoint;
+import com.github.sanctum.jda.common.util.TextAreaOutputStream;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -13,18 +11,22 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.PrintStream;
+import java.util.Arrays;
 import javax.swing.*;
-import org.jetbrains.annotations.NotNull;
 
-public class InputConsole extends Console {
+public abstract class Console extends JFrame {
+	protected JTextField jt;
+	protected JTextArea ta;
+	protected JLabel l;
+	protected boolean typing;
+	protected Timer t;
+	protected final MainPanel window;
 
-	final PantherCollection<Input> inputs = new PantherList<>();
-
-	public InputConsole(MainPanel window) {
-		super(window);
+	public Console(MainPanel window) {
+		this.window = window;
+		createGUI();
 	}
 
-	@Override
 	void createGUI() {
 
 		// Set frame properties
@@ -73,7 +75,7 @@ public class InputConsole extends Console {
 				typing = true;
 
 				// If he presses enter, add text to chat textarea
-				if (ke.getKeyCode() == KeyEvent.VK_ENTER) sendMessage(jt.getText());
+				if (ke.getKeyCode() == KeyEvent.VK_ENTER) runCommand(jt.getText());
 				if (ke.getKeyCode() == KeyEvent.VK_ESCAPE) {
 					setVisible(false);
 					window.stop();
@@ -170,44 +172,45 @@ public class InputConsole extends Console {
 
 			}
 		});
+		PrintStream con = new PrintStream(new TextAreaOutputStream(ta));
+		// Set up the output stream for our console printing.
+		System.setOut(con);
+		System.setErr(con);
 	}
 
-	@Override
+	public MainPanel getPanel() {
+		return this.window;
+	}
+
+	public void toggleVisibility() {
+		setVisible(!isVisible());
+	}
+
 	public void sendMessage(String text) {
 		// If text is empty return
 		if (text.trim().isEmpty()) return;
+
 		// Otherwise, append text with a new line
 		ta.append(text + "\n");
 
 		// Set textfield and label text to empty string
 		jt.setText("");
 		l.setText("");
-		inputs.forEach(i -> {
-			i.onReceiveMessage(text, this);
-			TaskScheduler.now(() -> inputs.remove(i));
-		});
 	}
 
-	public void input(@NotNull Input input) {
-		this.inputs.add(input);
-	}
-
-	public void reply(String text) {
+	public void runCommand(String text) {
 		// If text is empty return
 		if (text.trim().isEmpty()) return;
 
-		// Otherwise, append text with a new line
-		ta.append(text + "\n");
+		String label = text.replace("/", "").split(" ")[0];
+		GuppyEntryPoint.getConsoleCommands().forEach(cmd -> {
+			if (cmd.getLabel().equalsIgnoreCase(label) || cmd.getAliases().stream().anyMatch(label::equalsIgnoreCase))
+				cmd.execute(Arrays.stream(text.replace("/", "").split(" ")).filter(s -> !s.equalsIgnoreCase(cmd.getLabel()) && cmd.getAliases().stream().noneMatch(s::equalsIgnoreCase)).toArray(String[]::new));
+		});
 
 		// Set textfield and label text to empty string
 		jt.setText("");
 		l.setText("");
-	}
-
-	public interface Input {
-
-		void onReceiveMessage(@NotNull String message, @NotNull InputConsole console);
-
 	}
 
 }

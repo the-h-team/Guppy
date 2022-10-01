@@ -38,6 +38,10 @@ public final class DiscordExtensionManager {
 		return extensions.containsKey(c.getSimpleName()) && extensions.get(c.getSimpleName()).isActive();
 	}
 
+	public PantherMap<String, DiscordExtension> getExtensions() {
+		return extensions;
+	}
+
 	public File getAddonFolder() {
 		return addonFolder;
 	}

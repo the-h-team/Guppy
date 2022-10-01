@@ -24,6 +24,8 @@ public interface Guppy extends Identifiable, Mailable {
 
 	@Nullable Role getRole(long id);
 
+	boolean has(@NotNull Role... roles);
+
 	void inherit(@NotNull Role... roles);
 
 	void revoke(@NotNull Role... roles);
@@ -33,6 +35,8 @@ public interface Guppy extends Identifiable, Mailable {
 	interface Message {
 
 		@NotNull String getText();
+
+		long getId();
 
 		@Nullable Channel getChannel();
 

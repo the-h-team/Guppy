@@ -1,10 +1,10 @@
-package com.github.sanctum.jda.ui.content;
+package com.github.sanctum.jda.common.content;
 
 import static javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE;
 
-import com.github.sanctum.jda.ui.util.TaskScheduler;
 import com.github.sanctum.panther.container.PantherEntryMap;
 import com.github.sanctum.panther.container.PantherMap;
+import com.github.sanctum.panther.util.TaskChain;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
@@ -26,14 +26,14 @@ public abstract class MainPanel extends JPanel implements Runnable {
 	JDA jda;
 
 	final JFrame frame;
-	final InputConsole inputConsole;
+	final ConsoleSetup inputConsole;
 	final Console console;
 	final KeyHandler handler;
 
 	public MainPanel(JFrame frame) {
 		this.frame = frame;
 		this.console = new Console(this){};
-		this.inputConsole = new InputConsole(this);
+		this.inputConsole = new ConsoleSetup(this);
 		this.handler = new KeyHandler(this);
 		frame.add(this);
 		setPreferredSize(new Dimension(1280, 720));
@@ -53,7 +53,7 @@ public abstract class MainPanel extends JPanel implements Runnable {
 		return console;
 	}
 
-	public InputConsole getInputConsole() {
+	public ConsoleSetup getInputConsole() {
 		return inputConsole;
 	}
 
@@ -93,7 +93,7 @@ public abstract class MainPanel extends JPanel implements Runnable {
 		} else {
 			if (jda != null) {
 				jda.shutdown();
-				TaskScheduler.later(() -> {
+				TaskChain.getAsynchronous().wait(() -> {
 					frame.dispose();
 					System.exit(0);
 					frame.setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -120,7 +120,7 @@ public abstract class MainPanel extends JPanel implements Runnable {
 		infoMap.forEach(entry -> {
 			int count = infoCounterMap.get(entry.getKey());
 			if (count == 4500) {
-				TaskScheduler.now(() -> {
+				TaskChain.getAsynchronous().run(() -> {
 					infoCounterMap.remove(entry.getKey());
 					infoMap.remove(entry.getKey());
 					infoYMap.remove(entry.getKey());

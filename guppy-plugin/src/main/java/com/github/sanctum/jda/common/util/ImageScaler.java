@@ -1,4 +1,4 @@
-package com.github.sanctum.jda.ui.content;
+package com.github.sanctum.jda.common.util;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;

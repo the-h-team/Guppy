@@ -1,4 +1,4 @@
-package com.github.sanctum.jda.ui.api;
+package com.github.sanctum.jda.common.api;
 
 public final class JDAInput {
 

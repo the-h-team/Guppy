@@ -1,4 +1,4 @@
-package com.github.sanctum.jda.ui.util;
+package com.github.sanctum.jda.common.util;
 
 import com.github.sanctum.jda.event.GuppyEvent;
 import com.github.sanctum.panther.event.Vent;

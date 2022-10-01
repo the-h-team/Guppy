@@ -5,6 +5,7 @@ import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.MusicPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import java.util.concurrent.TimeUnit;
@@ -30,11 +31,31 @@ public final class DefaultAudioListener extends AudioEventAdapter implements Mus
 			if (result.canStartNext()) {
 				MusicPlayer.Track next = queue.getQueue().poll();
 				if (next != null) {
-					controller.start(next, true);
-					Channel c = queue.LastAlerted();
-					if (c != null)
-						c.sendMessage("Now playing track **" + next.getName() + "** by **" + next.getAuthor() + "**").queue();
-				} else controller.cleanup(TimeUnit.MINUTES.toMillis(1));
+					try {
+						controller.start(next, true);
+						Channel c = queue.LastAlerted();
+						if (c != null) {
+							c.sendMessage("Now playing track **" + next.getName() + "** by **" + next.getAuthor() + "**").queue();
+						}
+					} catch (FriendlyException e) {
+						Channel c = queue.LastAlerted();
+						if (c != null) {
+							c.sendMessage("For some reason we were unable to play the next track.. attempting to skip.").deploy(message -> {
+								MusicPlayer.Track poll = queue.getQueue().poll();
+								if (poll != null) {
+									try {
+										controller.start(poll, true);
+										c.sendMessage("Now playing track **" + poll.getName() + "** by **" + poll.getAuthor() + "**").queue();
+									} catch (FriendlyException exc) {
+										c.sendMessage("For some reason we were unable to play the next track...").deploy();
+										controller.cleanup(TimeUnit.SECONDS.toMillis(20));
+									}
+								}
+								;
+							});
+						} else controller.cleanup(TimeUnit.SECONDS.toMillis(20));
+					}
+				}
 			}
 		} else listener.onEnd(controller, track, result);
 	}

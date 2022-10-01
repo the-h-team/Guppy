@@ -1,22 +1,22 @@
-package com.github.sanctum.jda.ui.content;
+package com.github.sanctum.jda.common.content;
 
 import com.github.sanctum.jda.addon.DiscordClassLoader;
 import com.github.sanctum.jda.addon.DiscordExtensionManager;
-import com.github.sanctum.jda.ui.api.ConsoleCommand;
+import com.github.sanctum.jda.common.api.ConsoleCommand;
 import com.github.sanctum.panther.util.PantherLogger;
-import com.github.sanctum.panther.util.WrongLoaderUsedException;
 import java.io.File;
 import java.io.IOException;
 import java.util.logging.Logger;
 
-public class AddonConsoleCommand extends ConsoleCommand {
-	public AddonConsoleCommand() {
+public class CommandAddon extends ConsoleCommand {
+	public CommandAddon() {
 		super("addon");
 	}
 
 	@Override
 	public void execute(String[] args) {
 		if (args.length == 0) {
+			Logger logger = PantherLogger.getInstance().getLogger();
 
 		}
 		if (args.length == 1) {
@@ -33,15 +33,9 @@ public class AddonConsoleCommand extends ConsoleCommand {
 								};
 								if (loader.isLoaded()) {
 									logger.info("Extension " + '"' + loader.getMainClass().getClass().getSimpleName() + '"' + " already loaded, skipping...");
-									loader.getClasses().forEach(aClass -> {
-										try {
-											loader.unload(aClass);
-										} catch (WrongLoaderUsedException e) {
-											e.printStackTrace();
-										}
-									});
 								} else {
 									logger.info("Loaded extension " + loader.getMainClass().getClass().getSimpleName());
+									DiscordExtensionManager.getInstance().load(loader.getMainClass());
 								}
 							} catch (IOException e) {
 								e.printStackTrace();

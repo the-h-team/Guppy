@@ -1,5 +1,6 @@
 package com.github.sanctum.jda;
 
+import com.github.sanctum.jda.addon.DiscordExtensionManager;
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
 import com.github.sanctum.jda.common.CommandController;
@@ -13,17 +14,17 @@ import com.github.sanctum.jda.common.Role;
 import com.github.sanctum.jda.listener.GuppyCommandProcessor;
 import com.github.sanctum.jda.listener.JDAListenerAdapter;
 import com.github.sanctum.jda.loading.DockingAgent;
-import com.github.sanctum.jda.ui.api.ConsoleCommand;
-import com.github.sanctum.jda.ui.api.JDAInput;
-import com.github.sanctum.jda.ui.content.AddonConsoleCommand;
-import com.github.sanctum.jda.ui.content.MainPanel;
-import com.github.sanctum.jda.ui.content.StartConsoleCommand;
-import com.github.sanctum.jda.ui.content.StopConsoleCommand;
+import com.github.sanctum.jda.common.api.ConsoleCommand;
+import com.github.sanctum.jda.common.api.JDAInput;
+import com.github.sanctum.jda.common.content.CommandAddon;
+import com.github.sanctum.jda.common.content.MainPanel;
+import com.github.sanctum.jda.common.content.CommandStop;
 import com.github.sanctum.jda.util.DefaultAudioListener;
 import com.github.sanctum.jda.util.DefaultAudioSendHandler;
 import com.github.sanctum.jda.util.InvalidGuppyStateException;
 import com.github.sanctum.jda.util.OptionTypeConverter;
 import com.github.sanctum.panther.annotation.Comment;
+import com.github.sanctum.panther.annotation.Note;
 import com.github.sanctum.panther.container.ImmutablePantherCollection;
 import com.github.sanctum.panther.container.PantherCollection;
 import com.github.sanctum.panther.container.PantherCollectors;
@@ -35,7 +36,9 @@ import com.github.sanctum.panther.event.Vent;
 import com.github.sanctum.panther.event.VentMap;
 import com.github.sanctum.panther.file.Configurable;
 import com.github.sanctum.panther.file.JsonConfiguration;
+import com.github.sanctum.panther.file.Node;
 import com.github.sanctum.panther.recursive.ServiceFactory;
+import com.github.sanctum.panther.recursive.ServiceLoader;
 import com.github.sanctum.panther.util.Deployable;
 import com.github.sanctum.panther.util.PantherLogger;
 import com.github.sanctum.panther.util.ParsedTimeFormat;
@@ -50,41 +53,43 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import java.awt.*;
+import java.io.BufferedReader;
 import java.io.Console;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
-import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.security.auth.login.LoginException;
-import javax.swing.*;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.audio.AudioSendHandler;
 import net.dv8tion.jda.api.entities.Activity;
-import net.dv8tion.jda.api.entities.AudioChannel;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
-import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.MessageEmbed;
-import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.MessageReaction;
-import net.dv8tion.jda.api.entities.NewsChannel;
-import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.concrete.NewsChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
@@ -101,28 +106,26 @@ import org.jetbrains.annotations.Nullable;
 
 public final class GuppyEntryPoint implements Vent.Host {
 
-	public GuppyEntryPoint(Logger logger) {
-		this.logger = logger;
-	}
-
 	static final PantherMap<String, ConsoleCommand> consoleCommands = new PantherEntryMap<>();
 	static GuppyEntryPoint entryPoint;
-	static MainPanel main;
 	JDA jda;
 	Guild guild;
 	GuppyAPI api;
 	boolean active;
 	final Logger logger;
-	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
 	final PantherCollection<Command> commandSupplier = new PantherSet<>();
+	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
 
-	static {
-		consoleCommands.put("stop", new StopConsoleCommand());
-		consoleCommands.put("start", new StartConsoleCommand());
-		consoleCommands.put("addon", new AddonConsoleCommand());
+	public GuppyEntryPoint(Logger logger) {
+		this.logger = logger;
 	}
 
-	public void enable(@Nullable DockingAgent dockingAgent) throws InterruptedException, InvalidGuppyStateException {
+	static {
+		consoleCommands.put("stop", new CommandStop());
+		consoleCommands.put("addon", new CommandAddon());
+	}
+
+	public void enable(@Nullable @Note("Passing null insinuates standalone") DockingAgent dockingAgent) throws InterruptedException, InvalidGuppyStateException {
 		if (active) throw new InvalidGuppyStateException("Guppy already running!");
 		active = true;
 		if (entryPoint == null) entryPoint = this;
@@ -137,20 +140,17 @@ public final class GuppyEntryPoint implements Vent.Host {
 						.deploy();
 			} else {
 				this.jda = dockingAgent.deploy();
+				final Configurable config = new JsonConfiguration(new File("common"), "config", null);
+				ServiceLoader g = ServiceFactory.getInstance().newLoader(GuppyConfigurable.class);
+				GuppyConfigurable n = new GuppyConfigurable();
+				n.set(config);
+				g.supply(n);
 			}
 		} catch (LoginException e) {
 			logger.severe("Unable to verify bot token.");
 		}
-
 		jda.awaitReady();
-		final Configurable config = new JsonConfiguration(new File("common"), "config", null);
-		GuppyConfigurable g = ServiceFactory.getInstance().getService(GuppyConfigurable.class);
-		if (g == null) {
-			GuppyConfigurable n = new GuppyConfigurable();
-			n.set(config);
-			ServiceFactory.getInstance().getLoader(GuppyConfigurable.class).supply(n);
-		}
-		this.guild = jda.getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+		this.guild = jda.getGuildById(api.getConfig().getNode("guild").toPrimitive().getLong());
 	}
 
 	public void disable() throws InvalidGuppyStateException {
@@ -161,7 +161,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		commandSupplier.clear();
 	}
 
-	@NotNull
+	@Nullable
 	public JDA getJDA() {
 		return jda;
 	}
@@ -176,6 +176,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull String getText() {
 				return message.getContentDisplay();
+			}
+
+			@Override
+			public long getId() {
+				return message.getIdLong();
 			}
 
 			@Override
@@ -212,6 +217,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
+					public @Nullable Guppy.Message getMessage(long id) {
+						return getHistory().stream().filter(m -> m.getId() == id).findFirst().orElse(null);
+					}
+
+					@Override
 					public @NotNull PantherCollection<Guppy.Message> getHistory() {
 						return new PantherList<>();
 					}
@@ -233,7 +243,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public void setName(@NotNull String newName) {
-						((TextChannel)message.getChannel()).getManager().setName(newName);
+						((TextChannel) message.getChannel()).getManager().setName(newName);
 					}
 
 					@Override
@@ -298,7 +308,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 			public @NotNull EmbeddedMessage[] getAttached() {
 				return message.getEmbeds().stream().map(m -> {
 					EmbeddedMessage.Builder builder = new EmbeddedMessage.Builder();
-					if (m.getAuthor() != null) builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
+					if (m.getAuthor() != null)
+						builder.setAuthor(GuppyAPI.getInstance().getGuppy(m.getAuthor().getName().split("#")[0], false));
 					if (m.getTitle() != null) builder.setHeader(m.getTitle());
 					if (m.getFooter() != null) builder.setFooter(m.getFooter().getText());
 					if (m.getColor() != null) builder.setColor(m.getColor());
@@ -391,7 +402,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 					public Channel getChannel() {
 						AudioChannel channel = getState().getChannel();
 						if (channel == null) return null;
-						return newChannel(channel);
+						return newChannel((VoiceChannel) channel);
 					}
 				};
 			}
@@ -434,6 +445,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull Role[] getRoles() {
 				Member m = getGuild().getMember(u);
+				if (m == null) return new Role[0];
 				return m.getRoles().stream().map(GuppyEntryPoint.this::newRole).toArray(Role[]::new);
 			}
 
@@ -445,6 +457,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @Nullable Role getRole(long id) {
 				return Arrays.stream(getRoles()).filter(r -> r.getId() == id).findFirst().orElse(null);
+			}
+
+			@Override
+			public boolean has(@NotNull Role... roles) {
+				for (Role role : roles) {
+					if (Arrays.stream(getRoles()).noneMatch(r -> r.getId() == role.getId())) {
+						return false;
+					}
+				}
+				return true;
 			}
 
 			@Override
@@ -512,11 +534,44 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public Deployable<Void> open() {
+				if (t instanceof AudioChannel) {
+					return Deployable.of(() -> {
+						final MusicPlayer.SendHandler handler = GuppyAPI.getInstance().getPlayer().getSendHandler();
+						getGuild().getAudioManager().setSendingHandler(handler instanceof AudioSendHandler ? (AudioSendHandler) handler : new AudioSendHandler() {
+							@Override
+							public boolean canProvide() {
+								return handler.canProvide();
+							}
+
+							@Nullable
+							@Override
+							public ByteBuffer provide20MsAudio() {
+								return handler.provide20MsAudio();
+							}
+
+							@Override
+							public boolean isOpus() {
+								return handler.isOpus();
+							}
+						});
+						PantherLogger.getInstance().getLogger().info("Connecting to voice channel " + getName() + "(" + getId() + ")");
+						getGuild().getAudioManager().openAudioConnection(getJDA().getVoiceChannelById(getId()));
+					}, 1);
+				}
 				return null;
 			}
 
 			@Override
 			public Deployable<Void> close() {
+				if (t instanceof VoiceChannel) {
+					return Deployable.of(() -> {
+						AudioChannel ch = getGuild().getAudioManager().getConnectedChannel();
+						if (ch != null) {
+							PantherLogger.getInstance().getLogger().info("Leaving voice channel " + ch.getName() + "(" + ch.getIdLong() + ")");
+							getGuild().getAudioManager().closeAudioConnection();
+						}
+					}, 1);
+				}
 				return null;
 			}
 
@@ -543,7 +598,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull PantherCollection<Thread> getThreads() {
 				if (!(t instanceof TextChannel)) return new PantherList<>();
-				return ((TextChannel)t).getThreadChannels().stream().map(threadChannel -> new Thread() {
+				return ((TextChannel) t).getThreadChannels().stream().map(threadChannel -> new Thread() {
 					@Override
 					public @NotNull String getName() {
 						return threadChannel.getName();
@@ -616,11 +671,175 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public @Nullable Guppy.Message getMessage(long id) {
+				Message message = t.retrieveMessageById(id).submit().join();
+				if (message != null) {
+					return new Guppy.Message() {
+						@Override
+						public @NotNull String getText() {
+							return message.getContentRaw();
+						}
+
+						@Override
+						public long getId() {
+							return message.getIdLong();
+						}
+
+						@Override
+						public @Nullable Channel getChannel() {
+							return GuppyEntryPoint.this.newChannel(message.getChannel());
+						}
+
+						@Override
+						public @Nullable Channel.Thread getThread() {
+							return new Thread() {
+								@Override
+								public boolean isOwned() {
+									return message.getChannel().getName().contains("THREAD") && !message.getStartedThread().isOwner();
+								}
+
+								@Override
+								public @Nullable Guppy getOwner() {
+									return api.getGuppy(message.getStartedThread().getOwnerIdLong());
+								}
+
+								@Override
+								public @NotNull Channel getParent() {
+									return null;
+								}
+
+								@Override
+								public void delete() {
+
+								}
+
+								@Override
+								public long getId() {
+									return 0;
+								}
+
+								@Override
+								public Deployable<Guppy.Message> sendMessage(@NotNull String message1) {
+									return null;
+								}
+
+								@Override
+								public @NotNull String getName() {
+									return message.getStartedThread().getName();
+								}
+							};
+						}
+
+						@Override
+						public @NotNull Reaction[] getReactions() {
+							return message.getReactions().stream().map(GuppyEntryPoint.this::newReaction).toArray(Reaction[]::new);
+						}
+
+						@Override
+						public @NotNull EmbeddedMessage[] getAttached() {
+							return message.getEmbeds().stream().map(messageEmbed -> new EmbeddedMessage() {
+								@Override
+								public @Nullable String getHeader() {
+									return messageEmbed.getTitle();
+								}
+
+								@Override
+								public @Nullable Color getColor() {
+									return messageEmbed.getColor();
+								}
+
+								@Override
+								public @NotNull Image getImage() {
+									return () -> messageEmbed.getImage().getUrl();
+								}
+
+								@Override
+								public @Nullable Thumbnail getThumbnail() {
+									return () -> messageEmbed.getThumbnail().getUrl();
+								}
+
+								@Override
+								public @Nullable String getDescription() {
+									return messageEmbed.getDescription();
+								}
+
+								@Override
+								public @Nullable Guppy getAuthor() {
+									return api.getGuppy(messageEmbed.getAuthor().getName().split("#")[0], false);
+								}
+
+								@Override
+								public @Nullable Footer getFooter() {
+									return new Footer() {
+										@Override
+										public @Nullable String getIconUrl() {
+											return messageEmbed.getFooter().getIconUrl();
+										}
+
+										@Override
+										public @NotNull String getText() {
+											return messageEmbed.getFooter().getText();
+										}
+									};
+								}
+
+								@Override
+								public @NotNull Field[] getFields() {
+									return messageEmbed.getFields().stream().map(field -> new Field() {
+										@Override
+										public @NotNull String getValue() {
+											return field.getValue();
+										}
+
+										@Override
+										public boolean inline() {
+											return field.isInline();
+										}
+
+										@Override
+										public @NotNull String getName() {
+											return field.getName();
+										}
+									}).toArray(Field[]::new);
+								}
+							}).toArray(EmbeddedMessage[]::new);
+						}
+
+						@Override
+						public @Nullable Reaction getReaction(@NotNull String code) {
+							return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+						}
+
+						@Override
+						public void add(@NotNull Reaction reaction) {
+
+						}
+
+						@Override
+						public void take(@NotNull Reaction reaction) {
+
+						}
+
+						@Override
+						public void delete() {
+
+						}
+					};
+				}
+				return null;
+			}
+
+			@Override
 			public @NotNull PantherCollection<Guppy.Message> getHistory() {
 				return t.getHistory().getRetrievedHistory().stream().map(message -> new Guppy.Message() {
 					@Override
 					public @NotNull String getText() {
 						return message.getContentRaw();
+					}
+
+					@Override
+					public long getId() {
+						return message.getIdLong();
 					}
 
 					@Override
@@ -648,7 +867,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 							@Override
 							public void delete() {
-
+								message.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
 							}
 
 							@Override
@@ -760,7 +979,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public void delete() {
-
+						message.delete().queueAfter(2, TimeUnit.MILLISECONDS);
 					}
 				}).collect(PantherCollectors.toList());
 			}
@@ -782,7 +1001,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public void setName(@NotNull String newName) {
-				if (t instanceof TextChannel) ((TextChannel)t).getManager().setName(newName).queue();
+				if (t instanceof TextChannel) ((TextChannel) t).getManager().setName(newName).queue();
 			}
 
 			@Override
@@ -822,112 +1041,6 @@ public final class GuppyEntryPoint implements Vent.Host {
 						builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
 					}
 					t.sendMessageEmbeds(builder.build()).queue();
-					return m;
-				}, 1);
-			}
-		};
-	}
-
-	public @NotNull Channel newChannel(@NotNull AudioChannel t) {
-		return new Channel() {
-
-			@Override
-			public Deployable<Void> open() {
-				return Deployable.of(() -> {
-					final MusicPlayer.SendHandler handler = GuppyAPI.getInstance().getPlayer().getSendHandler();
-					getGuild().getAudioManager().setSendingHandler(handler instanceof AudioSendHandler ? (AudioSendHandler) handler : new AudioSendHandler() {
-						@Override
-						public boolean canProvide() {
-							return handler.canProvide();
-						}
-
-						@Nullable
-						@Override
-						public ByteBuffer provide20MsAudio() {
-							return handler.provide20MsAudio();
-						}
-
-						@Override
-						public boolean isOpus() {
-							return handler.isOpus();
-						}
-					});
-					PantherLogger.getInstance().getLogger().info("Connecting to voice channel " + getId());
-					getGuild().getAudioManager().openAudioConnection(getJDA().getVoiceChannelById(getId()));
-				}, 1);
-			}
-
-			@Override
-			public Deployable<Void> close() {
-				PantherLogger.getInstance().getLogger().info("Leaving voice channel " + getId());
-				return Deployable.of(() -> getGuild().getAudioManager().closeAudioConnection(), 1);
-			}
-
-			@Override
-			public @NotNull String getName() {
-				return t.getName();
-			}
-
-			@Override
-			public long getId() {
-				return t.getIdLong();
-			}
-
-			@Override
-			public @Nullable Thread getThread(@NotNull String name) {
-				return getThreads().stream().filter(t1 -> t1.getName().equals(name)).findFirst().orElse(null);
-			}
-
-			@Override
-			public @Nullable Thread getThread(long id) {
-				return getThreads().stream().filter(t1 -> t1.getId() == id).findFirst().orElse(null);
-			}
-
-			@Override
-			public @NotNull PantherCollection<Thread> getThreads() {
-				return new PantherList<>();
-			}
-
-			@Override
-			public @NotNull PantherCollection<Guppy.Message> getHistory() {
-				return new PantherList<>();
-			}
-
-			@Override
-			public boolean isPrivate() {
-				return false;
-			}
-
-			@Override
-			public boolean isNews() {
-				return false;
-			}
-
-			@Override
-			public boolean isVoice() {
-				return true;
-			}
-
-			@Override
-			public void setName(@NotNull String newName) {
-				t.getManager().setName(newName).queueAfter(2, TimeUnit.MILLISECONDS);
-			}
-
-			@Override
-			public void delete() {
-				t.delete().queueAfter(2, TimeUnit.MILLISECONDS);
-			}
-
-			@Override
-			public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-				return Deployable.of(() -> {
-					return null;
-				}, 1);
-			}
-
-			@Override
-			public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-				return Deployable.of(() -> {
 					return m;
 				}, 1);
 			}
@@ -1021,14 +1134,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return entryPoint;
 	}
 
-	public static void setInstance(@NotNull GuppyEntryPoint e) {
-		entryPoint = e;
-	}
-
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
-		private CommandController commands;
+		private final CommandController commands;
 		MusicPlayer player = new MusicPlayer() {
 
 			private final AudioPlayer player;
@@ -1047,7 +1156,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public Track getPlaying() {
 						return new Track() {
-							AudioTrack handle = player.getPlayingTrack();
+							final AudioTrack handle = player.getPlayingTrack();
+
 							@Override
 							public @NotNull String getAuthor() {
 								return handle.getInfo().author;
@@ -1189,6 +1299,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			Track transform(AudioTrack track) {
 				return new Track() {
 					final AudioTrack handle = track;
+
 					@Override
 					public @NotNull String getAuthor() {
 						return handle.getInfo().author;
@@ -1252,7 +1363,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public void noMatches() {
-						channel.sendMessage("Sorry unable to play track " + url).queue();					}
+						channel.sendMessage("Sorry unable to play track " + url).queue();
+					}
 
 					@Override
 					public void loadFailed(FriendlyException exception) {
@@ -1479,6 +1591,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 				}
 
 				@Override
+				public boolean has(@NotNull Role... roles) {
+					return false;
+				}
+
+				@Override
 				public void inherit(@NotNull Role... roles) {
 
 				}
@@ -1544,7 +1661,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		@Override
 		public @NotNull Channel newChannel(@NotNull Object channel) {
 			if (channel instanceof AudioChannel) {
-				return GuppyEntryPoint.this.newChannel((AudioChannel) channel);
+				return GuppyEntryPoint.this.newChannel((VoiceChannel) channel);
 			}
 			if (channel instanceof MessageChannel) {
 				return GuppyEntryPoint.this.newChannel((MessageChannel) channel);
@@ -1562,6 +1679,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 				@Override
 				public @NotNull PantherCollection<Thread> getThreads() {
+					return null;
+				}
+
+				@Override
+				public @Nullable Guppy.Message getMessage(long id) {
 					return null;
 				}
 
@@ -1626,7 +1748,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 		public @NotNull Channel newChannel(@NotNull String name, long categoryId, Role.Attachment... attachments) {
 			Channel test = getChannel(name);
 			if (test != null) return test;
-			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+			Guild guild = getGuild();
 			return initialize(guild, name, categoryId, attachments);
 		}
 
@@ -1704,7 +1826,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			Channel test = getChannel(name);
 			if (test != null) return test;
 			User match = getJDA().getUserById(guppy.getId());
-			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+			Guild guild = getGuild();
 			return memberInitialize(guild, match, name, categoryId, attachments);
 		}
 
@@ -1716,7 +1838,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			for (int i = 0; i < guppies.length; i++) {
 				users[i] = getJDA().getUserById(guppies[i].getId());
 			}
-			Guild guild = getJDA().getGuildById(ServiceFactory.getInstance().getService(GuppyConfigurable.class).get().getNode("guild").toPrimitive().getLong());
+			Guild guild = getGuild();
 			return membersInitialize(guild, users, name, categoryId, attachments);
 		}
 
@@ -1810,71 +1932,180 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return consoleCommands.values();
 	}
 
-	public static @NotNull("Main panel not loaded!") MainPanel getMainPanel() {
-		return main;
-	}
-
 	@Comment("This method handles application stuff.")
 	public static void main(String[] args) {
 
-		/*
-		// open gui
-		JFrame window = new JFrame();
-		window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		window.setResizable(true);
-		window.setUndecorated(true);
-		window.setTitle("Guppy Bot");
+		System.out.println("Select a boot option:");
+		System.out.println(" ");
+		System.out.println("1. Start");
+		System.out.println("2. Setup");
+		System.out.println("3. Exit");
+		new Thread(() -> {
+			BufferedReader input = new BufferedReader(new InputStreamReader(System.in));
+			String line;
+			final Configurable configurable = new JsonConfiguration(new File("common"), "config", null) {
+			};
 
-		MainPanel m = (main = new MainPanel(window) {
-		});
-		m.start();
-		window.pack();
-		window.setLocationRelativeTo(null);
-		window.setVisible(true);
-		 */
-		//JDAInput input = new JDAInput();
-		//String test = JOptionPane.showInputDialog("Enter your bot token.");
-		//if (test == null || test.isEmpty())
-			//test = JOptionPane.showInputDialog("Bot token required! Please provide one");
-		//input.setToken("NzgwNTc4MTU4NTk2NDU2NDc4.GyX1mM.oZ8pFvF6aUHO1kOhwa_WcUbt7EAl6nnk150MVQ");
-		//String[] s = new String[]{"A.) Watching", "B.) Competing", "C.) Playing", "D.) Listening"};
-		//input.setActivity(s[JOptionPane.showOptionDialog(null,
-				//"Now select a status type.",
-				//"Good....",
-				//JOptionPane.DEFAULT_OPTION,
-				//JOptionPane.INFORMATION_MESSAGE,
-				//null,
-				//s,
-				//s[0])]);
-		//input.setActivityMessage(JOptionPane.showInputDialog("Now enter a status message."));
-		/*
-		switch (input.getActivity().toLowerCase(Locale.ROOT)) {
-			case "a.) watching":
-				activity = Activity.watching(input.getActivityMessage());
-				break;
-			case "b.) competing":
-				activity = Activity.competing(input.getActivityMessage());
-				break;
-			case "c.) playing":
-				activity = Activity.playing(input.getActivityMessage());
-				break;
-			case "d.) listening":
-				activity = Activity.listening(input.getActivityMessage());
-				break;
-		}
-		 */
-		Console inputReader = System.console();
-		System.out.println("Awaiting input...");
-		while(true) {
-			String inputLine = inputReader.readLine();
-			if (inputLine == null) break;
-			String label = inputLine.replace("/", "").split(" ")[0];
-			GuppyEntryPoint.getConsoleCommands().forEach(cmd -> {
-				if (cmd.getLabel().equalsIgnoreCase(label) || cmd.getAliases().stream().anyMatch(label::equalsIgnoreCase))
-					cmd.execute(Arrays.stream(inputLine.replace("/", "").split(" ")).filter(s -> !s.equalsIgnoreCase(cmd.getLabel()) && cmd.getAliases().stream().noneMatch(s::equalsIgnoreCase)).toArray(String[]::new));
-			});
-		}
+			try {
+				while ((line = input.readLine()) != null) {
+					Activity activity = Activity.watching("Aqua Teen Hunger Force");
+					switch (line) {
+						case "1":
+							if (getInstance() != null && getInstance().active) return;
+							String botmsg = configurable.getString("activity.msg");
+							switch (configurable.getString("activity.id")) {
+								case "1":
+									activity = Activity.watching(botmsg);
+									break;
+								case "2":
+									activity = Activity.playing(botmsg);
+									break;
+								case "3":
+									activity = Activity.listening(botmsg);
+									break;
+								case "4":
+									activity = Activity.competing(botmsg);
+									break;
+							}
+							enable(configurable.getNode("token").toPrimitive().getString(), activity);
+							break;
+						case "2":
+							System.out.println("Beginning setup...");
+							Console c = System.console();
+							c.flush();
+							System.out.println("Enter your bot token.");
+							String botToken = c.readLine();
+							if (botToken != null) {
+								JDAInput jdaInput = new JDAInput();
+								configurable.getNode("token").set(botToken);
+								configurable.save();
+								System.out.println("Set bot token to \"" + botToken + "\"");
+								System.out.println(" ");
+								System.out.println("Enter your discord server id.");
+								String guildId = c.readLine();
+								if (guildId != null) {
+									configurable.getNode("guild").set(Long.parseLong(guildId));
+									configurable.save();
+									System.out.println(" ");
+									System.out.println("Select a bot activity.");
+									System.out.println(" ");
+									System.out.println("1. Watching");
+									System.out.println("2. Playing");
+									System.out.println("3. Listening");
+									System.out.println("4. Competing");
+									String botActivity = c.readLine();
+									if (botActivity != null) {
+										jdaInput.setActivity(botActivity);
+										System.out.println(" ");
+										System.out.println("Type a status message...");
+										String botMsg = c.readLine();
+										if (botMsg != null) {
+											switch (jdaInput.getActivity()) {
+												case "1":
+													activity = Activity.watching(botMsg);
+													break;
+												case "2":
+													activity = Activity.playing(botMsg);
+													break;
+												case "3":
+													activity = Activity.listening(botMsg);
+													break;
+												case "4":
+													activity = Activity.competing(botMsg);
+													break;
+											}
+											Node ac = configurable.getNode("activity");
+											ac.getNode("id").set(botActivity);
+											ac.getNode("msg").set(botMsg);
+											configurable.save();
+											System.out.println("Setup complete.");
+											c.flush();
+											if (activity != null) {
+												enable(botToken, activity);
+											} else
+												getConsoleCommands().stream().filter(cm -> cm.getLabel().equals("stop")).findFirst().ifPresent(cm -> cm.execute(new String[0]));
+										}
+									}
+								}
+							}
+							break;
+						case "3":
+							System.out.println("Exit code 3 used, shutting down...");
+							System.exit(0);
+						default:
+							String label = line.replace("/", "").split(" ")[0];
+							ConsoleCommand command = getConsoleCommands().stream().filter(cmd -> cmd.getLabel().equalsIgnoreCase(label) || cmd.getAliases().stream().anyMatch(label::equalsIgnoreCase)).findFirst().orElse(null);
+							if (command != null) {
+								command.execute(Arrays.stream(line.replace("/", "").split(" ")).filter(s -> !s.equalsIgnoreCase(command.getLabel()) && command.getAliases().stream().noneMatch(s::equalsIgnoreCase)).toArray(String[]::new));
+							}
+							break;
+					}
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}).start();
+	}
 
+	static void enable(@NotNull String token, @NotNull Activity activity) {
+		Logger n = Logger.getLogger(Guppy.class.getSimpleName());
+		GuppyLoggerFormat formatter = new GuppyLoggerFormat();
+		ConsoleHandler consoleHandler = new ConsoleHandler();
+		consoleHandler.setFormatter(formatter);
+		for (Handler iHandler : n.getParent().getHandlers()) {
+			n.getParent().removeHandler(iHandler);
+		}
+		n.addHandler(consoleHandler);
+		PantherLogger.getInstance().setLogger(n);
+		Logger logger = PantherLogger.getInstance().getLogger();
+		logger.info("---------------------------");
+		logger.info("Loading properties...");
+		logger.info("---------------------------");
+		entryPoint = new GuppyEntryPoint(PantherLogger.getInstance().getLogger());
+		try {
+			getInstance().enable(new DockingAgent().consume(new DockingAgent.Procedure() {
+				@Override
+				public void onConstruct(@NotNull JDABuilder builder) {
+					builder.setToken(token);
+					builder.enableIntents(Arrays.asList(GatewayIntent.values()));
+					builder.setActivity(activity);
+					builder.addEventListeners(new JDAListenerAdapter());
+					builder.enableCache(CacheFlag.ACTIVITY, CacheFlag.EMOJI, CacheFlag.VOICE_STATE, CacheFlag.ONLINE_STATUS);
+
+					builder.setChunkingFilter(ChunkingFilter.ALL);
+					builder.setMemberCachePolicy(MemberCachePolicy.ALL);
+					builder.setLargeThreshold(300);
+				}
+
+				@Override
+				public void onFinalize(@NotNull JDA instance) {
+					PantherCollection<SlashCommandData> data = new PantherList<>();
+					for (Command c : GuppyAPI.getInstance().getCommands().getAll()) {
+						SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
+						for (Command.Option o : c.getOptions().get()) {
+							OptionType type = OptionTypeConverter.get(o);
+							slashCommand.addOption(type, o.getName(), o.getDescription());
+						}
+						slashCommand.setGuildOnly(true);
+						data.add(slashCommand);
+					}
+					// clear cache.
+					instance.updateCommands().queue();
+					instance.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
+				}
+			}));
+			logger.info("Bot Loaded.");
+			logger.info("---------------------------");
+		} catch (Exception e) {
+			logger.info("Bot loading failure, reason: " + e.getMessage());
+			logger.info("---------------------------");
+		}
+		logger.info("Say " + '"' + "stop" + '"' + " or " + '"' + "exit" + '"' + " to close this application.");
+		logger.info("---------------------------");
+		File addonFolder = DiscordExtensionManager.getInstance().getAddonFolder();
+		if (!addonFolder.exists()) {
+			addonFolder.mkdirs();
+		}
 	}
 
 }
