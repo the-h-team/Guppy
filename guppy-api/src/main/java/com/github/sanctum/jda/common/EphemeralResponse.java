@@ -6,9 +6,13 @@ import org.jetbrains.annotations.Nullable;
 @FunctionalInterface
 public interface EphemeralResponse {
 
-	EphemeralResponse EMPTY = () -> "";
+	EphemeralResponse EMPTY = () -> "Hello im an empty response.";
 
 	@NotNull String get();
+
+	default @Nullable Dialogue getDialogue() {
+		return null;
+	}
 
 	default @Nullable EmbeddedMessage getExtra() {
 		return null;

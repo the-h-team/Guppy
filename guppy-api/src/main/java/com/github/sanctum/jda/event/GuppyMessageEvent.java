@@ -19,4 +19,9 @@ public abstract class GuppyMessageEvent extends GuppyEvent {
 	public @NotNull Guppy.Message getMessage() {
 		return message;
 	}
+
+	public boolean isContext() {
+		return false;
+	}
+
 }

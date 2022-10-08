@@ -6,7 +6,7 @@
 
     <groupId>com.github.the-h-team</groupId>
     <artifactId>Guppy</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2-SNAPSHOT</version>
     <modules>
         <module>guppy-plugin</module>
         <module>guppy-api</module>

@@ -6,15 +6,66 @@ import org.jetbrains.annotations.NotNull;
 
 public interface Command {
 
-	@NotNull String getLabel();
+	default @NotNull String getName() {
+		return getLabel();
+	}
 
-	@NotNull String getDescription();
+	default @NotNull String getLabel() {
+		return "mycommand";
+	}
 
-	@NotNull Options getOptions();
+	default @NotNull String getDescription() {
+		return "my command description";
+	}
 
-	@NotNull EphemeralResponse onExecuted(@NotNull Guppy guppy, @NotNull Variable variable);
+	default @NotNull String getMessage() {
+		return getLabel();
+	}
 
-	default void onPreProcess(@NotNull Guppy guppy, @NotNull String[] args) {
+	default @NotNull Options getOptions() {
+		return new Options() {
+			@Override
+			public @NotNull Options add(@NotNull Option... option) {
+				return null;
+			}
+
+			@Override
+			public @NotNull PantherCollection<Option> get() {
+				return null;
+			}
+		};
+	}
+
+	default @NotNull Type getType() {
+		return Type.SLASH;
+	}
+
+	default void onProcess(@NotNull Guppy guppy, @NotNull String[] args) {
+	}
+
+	default @NotNull EphemeralResponse onExecuted(@NotNull Guppy guppy, @NotNull Variable variable) {
+		return EphemeralResponse.EMPTY;
+	}
+
+	default @NotNull EphemeralResponse onContext(@NotNull Guppy guppy, @NotNull Command.ContextVariable variable) {
+		return EphemeralResponse.EMPTY;
+	}
+
+	enum Type {
+		USER,
+		MESSAGE,
+		SLASH,
+		MULTI_USER,
+		MULTI_MESSAGE,
+		UNKNOWN;
+	}
+
+	interface ContextVariable {
+
+		Guppy.Message getAsMessage();
+
+		Guppy getAsGuppy();
+
 	}
 
 	interface Variable {

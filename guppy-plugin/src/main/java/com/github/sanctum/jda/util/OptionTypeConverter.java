@@ -23,4 +23,19 @@ public final class OptionTypeConverter {
 		}
 	}
 
+	public static @NotNull net.dv8tion.jda.api.interactions.commands.Command.Type get(@NotNull Command.Type type) {
+		switch (type) {
+			case USER:
+			case MULTI_USER:
+				return net.dv8tion.jda.api.interactions.commands.Command.Type.USER;
+			case SLASH:
+				return net.dv8tion.jda.api.interactions.commands.Command.Type.SLASH;
+			case MESSAGE:
+			case MULTI_MESSAGE:
+				return net.dv8tion.jda.api.interactions.commands.Command.Type.MESSAGE;
+			default:
+				return net.dv8tion.jda.api.interactions.commands.Command.Type.UNKNOWN;
+		}
+	}
+
 }

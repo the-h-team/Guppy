@@ -22,7 +22,7 @@ public class GuppyCommandProcessor {
 				if (c != null) {
 					List<String> list = new ArrayList<>(Arrays.asList(text.split(" ")));
 					list.removeIf(s -> new PantherString(s).contains("/" + c.getLabel()));
-					c.onPreProcess(e.getGuppy(), list.toArray(new String[0]));
+					c.onProcess(e.getGuppy(), list.toArray(new String[0]));
 				}
 			}
 		}

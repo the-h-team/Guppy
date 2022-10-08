@@ -15,10 +15,14 @@ public interface CommandController {
 	 */
 	@Nullable Command get(@NotNull String label);
 
+	@Nullable Command getContext(@NotNull String message);
+
 	/**
 	 * @return a collection of registered commands.
 	 */
 	@NotNull PantherCollection<Command> getAll();
+
+	@NotNull PantherCollection<Command> getContext();
 
 	/**
 	 * @param command
@@ -31,6 +35,7 @@ public interface CommandController {
 	 * @return
 	 */
 	@NotNull Deployable<Void> remove(@NotNull Command command);
+
 
 	/**
 	 * @return a deployable sequence that refreshes the command map.

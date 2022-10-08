@@ -17,7 +17,7 @@ public class ExampleCommand extends JDACommand {
 	}
 
 	@Override
-	public void onPreProcess(@NotNull Guppy guppy, @NotNull String[] args) {
+	public void onProcess(@NotNull Guppy guppy, @NotNull String[] args) {
 
 	}
 

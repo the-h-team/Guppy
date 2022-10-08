@@ -4,10 +4,12 @@ import com.github.sanctum.jda.addon.DiscordExtensionManager;
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
 import com.github.sanctum.jda.common.CommandController;
+import com.github.sanctum.jda.common.Dialogue;
 import com.github.sanctum.jda.common.EmbeddedMessage;
 import com.github.sanctum.jda.common.Guppy;
 import com.github.sanctum.jda.common.GuppyConfigurable;
 import com.github.sanctum.jda.common.JDAController;
+import com.github.sanctum.jda.common.MenuDialogue;
 import com.github.sanctum.jda.common.MusicPlayer;
 import com.github.sanctum.jda.common.Reaction;
 import com.github.sanctum.jda.common.Role;
@@ -59,12 +61,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
@@ -86,7 +90,9 @@ import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.NewsChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.PrivateChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
@@ -95,6 +101,10 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.components.ActionRow;
+import net.dv8tion.jda.api.interactions.components.Modal;
+import net.dv8tion.jda.api.interactions.components.text.TextInput;
+import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.managers.RoleManager;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.ChannelAction;
@@ -114,6 +124,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	boolean active;
 	final Logger logger;
 	final PantherCollection<Command> commandSupplier = new PantherSet<>();
+	public final PantherMap<Guppy, Modal> modals = new PantherEntryMap<>();
 	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
 
 	public GuppyEntryPoint(Logger logger) {
@@ -185,113 +196,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public @NotNull Channel getChannel() {
-				return new Channel() {
-					@Override
-					public Deployable<Void> open() {
-						return null;
-					}
-
-					@Override
-					public Deployable<Void> close() {
-						return null;
-					}
-
-					@Override
-					public long getId() {
-						return message.getChannel().getIdLong();
-					}
-
-					@Override
-					public @Nullable Thread getThread(@NotNull String name) {
-						return null;
-					}
-
-					@Override
-					public @Nullable Thread getThread(long id) {
-						return null;
-					}
-
-					@Override
-					public @NotNull PantherCollection<Thread> getThreads() {
-						return new PantherList<>();
-					}
-
-					@Override
-					public @Nullable Guppy.Message getMessage(long id) {
-						return getHistory().stream().filter(m -> m.getId() == id).findFirst().orElse(null);
-					}
-
-					@Override
-					public @NotNull PantherCollection<Guppy.Message> getHistory() {
-						return new PantherList<>();
-					}
-
-					@Override
-					public boolean isPrivate() {
-						return true;
-					}
-
-					@Override
-					public boolean isNews() {
-						return false;
-					}
-
-					@Override
-					public boolean isVoice() {
-						return false;
-					}
-
-					@Override
-					public void setName(@NotNull String newName) {
-						((TextChannel) message.getChannel()).getManager().setName(newName);
-					}
-
-					@Override
-					public void delete() {
-						message.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
-					}
-
-					@Override
-					public @NotNull String getName() {
-						return message.getChannel().getName();
-					}
-
-					@Override
-					public Deployable<Guppy.Message> sendMessage(@NotNull String m) {
-						return Deployable.of(() -> wrapPrivateMessage(message.getChannel().sendMessage(m).submit().join()), 1);
-					}
-
-					@Override
-					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-						return Deployable.of(() -> {
-							EmbedBuilder builder = new EmbedBuilder();
-							if (m.getAuthor() != null) {
-								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
-							}
-							if (m.getHeader() != null) builder.setTitle(m.getHeader());
-							if (m.getFooter() != null) {
-								if (m.getFooter().getIconUrl() != null) {
-									builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
-								} else {
-									builder.setFooter(m.getFooter().getText());
-								}
-							}
-							if (m.getColor() != null) builder.setColor(m.getColor());
-							if (m.getThumbnail() != null) {
-								builder.setThumbnail(m.getThumbnail().getUrl());
-							}
-							if (m.getDescription() != null) builder.setDescription(m.getDescription());
-							if (m.getImage() != null) {
-								builder.setImage(m.getImage().getUrl());
-							}
-							for (EmbeddedMessage.Field f : m.getFields()) {
-								builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
-							}
-							message.getChannel().sendMessageEmbeds(builder.build()).queue();
-							return m;
-						}, 1);
-					}
-				};
+				return newChannel(message.getChannel());
 			}
 
 			@Override
@@ -348,6 +253,178 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public void delete() {
 				SimpleAsynchronousTask.runLater(() -> message.delete().queue(), 4);
+			}
+		};
+	}
+
+	public @NotNull Modal newModal(@NotNull Dialogue dialogue) {
+		if (dialogue instanceof MenuDialogue) {
+
+		}
+		PantherCollection<TextInput> inputs = new PantherList<>();
+		for (Dialogue.Row r : dialogue.getRows()) {
+			TextInput.Builder text = TextInput.create(r.getId(), r.getLabel(), r.isShort() ? TextInputStyle.SHORT : TextInputStyle.PARAGRAPH);
+			if (r.getPlaceholder() != null) text.setPlaceholder(r.getPlaceholder());
+			if (r.isRequired()) text.setRequired(true);
+			text.setRequiredRange(r.getMinCharactersAllowed(), r.getMaxCharactersAllowed());
+			inputs.add(text.build());
+		}
+		Modal modal = Modal.create(dialogue.getId(), dialogue.getTitle())
+				.addActionRows(inputs.toArray(new ActionRow[0]))
+				.build();
+		return modal;
+	}
+
+	public @NotNull Guppy.Message wrapPublicMessage(@NotNull Message message) {
+		return new Guppy.Message() {
+			@Override
+			public @NotNull String getText() {
+				return message.getContentRaw();
+			}
+
+			@Override
+			public long getId() {
+				return message.getIdLong();
+			}
+
+			@Override
+			public @NotNull Channel getChannel() {
+				return GuppyEntryPoint.this.newChannel(message.getChannel());
+			}
+
+			@Override
+			public Channel.@NotNull Thread getThread() {
+				return newThread(message.getChannel());
+			}
+
+			@Override
+			public @NotNull Reaction[] getReactions() {
+				return message.getReactions().stream().map(GuppyEntryPoint.this::newReaction).toArray(Reaction[]::new);
+			}
+
+			@Override
+			public @NotNull EmbeddedMessage[] getAttached() {
+				return message.getEmbeds().stream().map(messageEmbed -> new EmbeddedMessage() {
+					@Override
+					public @Nullable String getHeader() {
+						return messageEmbed.getTitle();
+					}
+
+					@Override
+					public @Nullable Color getColor() {
+						return messageEmbed.getColor();
+					}
+
+					@Override
+					public @Nullable Image getImage() {
+						return () -> {
+							MessageEmbed.ImageInfo info = messageEmbed.getImage();
+							if (info != null) {
+								String url = info.getUrl();
+								if (url != null) {
+									return url;
+								}
+							}
+							return null;
+						};
+					}
+
+					@Override
+					public @Nullable Thumbnail getThumbnail() {
+						return () -> {
+							MessageEmbed.Thumbnail info = messageEmbed.getThumbnail();
+							if (info != null) {
+								String url = info.getUrl();
+								if (url != null) {
+									return url;
+								}
+							}
+							return null;
+						};
+					}
+
+					@Override
+					public @Nullable String getDescription() {
+						return messageEmbed.getDescription();
+					}
+
+					@Override
+					public @Nullable Guppy getAuthor() {
+						MessageEmbed.AuthorInfo info = messageEmbed.getAuthor();
+						if (info != null) {
+							String tag = info.getName();
+							if (tag != null) {
+								return api.getGuppy(tag.split("#")[0], false);
+							}
+						}
+						return null;
+					}
+
+					@Override
+					public @Nullable Footer getFooter() {
+						return new Footer() {
+							@Override
+							public @Nullable String getIconUrl() {
+								return messageEmbed.getFooter().getIconUrl();
+							}
+
+							@Override
+							public @NotNull String getText() {
+								return messageEmbed.getFooter().getText();
+							}
+						};
+					}
+
+					@Override
+					public @NotNull Field[] getFields() {
+						return messageEmbed.getFields().stream().map(field -> new Field() {
+							@Override
+							public @NotNull String getValue() {
+								return field.getValue();
+							}
+
+							@Override
+							public boolean inline() {
+								return field.isInline();
+							}
+
+							@Override
+							public @NotNull String getName() {
+								return field.getName();
+							}
+						}).toArray(Field[]::new);
+					}
+				}).toArray(EmbeddedMessage[]::new);
+			}
+
+			@Override
+			public @Nullable Reaction getReaction(@NotNull String code) {
+				return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+			}
+
+			@Override
+			public void add(@NotNull Reaction reaction) {
+				Object r = reaction.get();
+				if (r instanceof Emoji) {
+					message.addReaction((Emoji) r).queueAfter(2, TimeUnit.MILLISECONDS);
+				} else if (r instanceof String) {
+					message.addReaction(Emoji.fromFormatted(r.toString())).queueAfter(2, TimeUnit.MILLISECONDS);
+				}
+			}
+
+			@Override
+			public void take(@NotNull Reaction reaction) {
+				Object r = reaction.get();
+				if (r instanceof Emoji) {
+					message.removeReaction((Emoji) r).queueAfter(2, TimeUnit.MILLISECONDS);
+				} else if (r instanceof String) {
+					message.removeReaction(Emoji.fromFormatted(r.toString())).queueAfter(2, TimeUnit.MILLISECONDS);
+				}
+			}
+
+			@Override
+			public void delete() {
+				message.delete().queueAfter(2, TimeUnit.MILLISECONDS);
 			}
 		};
 	}
@@ -529,6 +606,47 @@ public final class GuppyEntryPoint implements Vent.Host {
 		};
 	}
 
+	public @Nullable Channel.Thread newThread(@NotNull MessageChannel t) {
+		if (!(t instanceof ThreadChannel)) return null;
+		return new Channel.Thread() {
+			@Override
+			public boolean isOwned() {
+				return t.getName().contains("THREAD") && !((ThreadChannel)t).isOwner();
+			}
+
+			@Override
+			public @Nullable Guppy getOwner() {
+				return api.getGuppy(((ThreadChannel)t).getOwnerIdLong());
+			}
+
+			@Override
+			public @NotNull Channel getParent() {
+				ThreadChannel channel = (ThreadChannel) t;
+				return newChannel(channel.getParentMessageChannel());
+			}
+
+			@Override
+			public void delete() {
+				t.delete().queueAfter(2, TimeUnit.MILLISECONDS);
+			}
+
+			@Override
+			public long getId() {
+				return t.getIdLong();
+			}
+
+			@Override
+			public Deployable<Guppy.Message> sendMessage(@NotNull String mess) {
+				return Deployable.of(() -> wrapPrivateMessage(t.sendMessage(mess).submit().join()), 1);
+			}
+
+			@Override
+			public @NotNull String getName() {
+				return t.getName();
+			}
+		};
+	}
+
 	public @NotNull Channel newChannel(@NotNull MessageChannel t) {
 		return new Channel() {
 
@@ -557,8 +675,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 						PantherLogger.getInstance().getLogger().info("Connecting to voice channel " + getName() + "(" + getId() + ")");
 						getGuild().getAudioManager().openAudioConnection(getJDA().getVoiceChannelById(getId()));
 					}, 1);
-				}
-				return null;
+				} else throw new IllegalStateException("The bot can only connect to audio channels!");
 			}
 
 			@Override
@@ -571,8 +688,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 							getGuild().getAudioManager().closeAudioConnection();
 						}
 					}, 1);
-				}
-				return null;
+				} else throw new IllegalStateException("The bot can only connect to audio channels!");
 			}
 
 			@Override
@@ -598,240 +714,21 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @NotNull PantherCollection<Thread> getThreads() {
 				if (!(t instanceof TextChannel)) return new PantherList<>();
-				return ((TextChannel) t).getThreadChannels().stream().map(threadChannel -> new Thread() {
-					@Override
-					public @NotNull String getName() {
-						return threadChannel.getName();
-					}
-
-					@Override
-					public long getId() {
-						return threadChannel.getIdLong();
-					}
-
-					@Override
-					public boolean isOwned() {
-						return !threadChannel.isOwner();
-					}
-
-					@Override
-					public @Nullable Guppy getOwner() {
-						if (!isOwned()) return null;
-						return api.getGuppy(threadChannel.getOwner().getIdLong());
-					}
-
-					@Override
-					public @NotNull Channel getParent() {
-						Channel c = api.getChannel(threadChannel.getParentChannel().getIdLong());
-						assert c != null;
-						return c;
-					}
-
-					@Override
-					public void delete() {
-						threadChannel.delete().queueAfter(2, TimeUnit.MILLISECONDS);
-					}
-
-					@Override
-					public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-						return Deployable.of(() -> wrapPrivateMessage(threadChannel.sendMessage(message).submit().join()), 1);
-					}
-
-					@Override
-					public Deployable<EmbeddedMessage> sendEmbeddedMessage(@NotNull EmbeddedMessage m) {
-						return Deployable.of(() -> {
-							EmbedBuilder builder = new EmbedBuilder();
-							if (m.getAuthor() != null) {
-								builder.setAuthor(m.getAuthor().getTag(), m.getAuthor().getAvatarUrl(), m.getAuthor().getAvatarUrl());
-							}
-							if (m.getHeader() != null) builder.setTitle(m.getHeader());
-							if (m.getFooter() != null) {
-								if (m.getFooter().getIconUrl() != null) {
-									builder.setFooter(m.getFooter().getText(), m.getFooter().getIconUrl());
-								} else {
-									builder.setFooter(m.getFooter().getText());
-								}
-							}
-							if (m.getColor() != null) builder.setColor(m.getColor());
-							if (m.getThumbnail() != null) {
-								builder.setThumbnail(m.getThumbnail().getUrl());
-							}
-							if (m.getDescription() != null) builder.setDescription(m.getDescription());
-							if (m.getImage() != null) {
-								builder.setImage(m.getImage().getUrl());
-							}
-							for (EmbeddedMessage.Field f : m.getFields()) {
-								builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
-							}
-							threadChannel.sendMessageEmbeds(builder.build()).queue();
-							return m;
-						}, 1);
-					}
-				}).collect(PantherCollectors.toImmutableList());
+				return ((TextChannel) t).getThreadChannels().stream().map(threadChannel -> newThread(threadChannel)).collect(PantherCollectors.toImmutableList());
 			}
 
 			@Override
 			public @Nullable Guppy.Message getMessage(long id) {
 				Message message = t.retrieveMessageById(id).submit().join();
 				if (message != null) {
-					return new Guppy.Message() {
-						@Override
-						public @NotNull String getText() {
-							return message.getContentRaw();
-						}
-
-						@Override
-						public long getId() {
-							return message.getIdLong();
-						}
-
-						@Override
-						public @Nullable Channel getChannel() {
-							return GuppyEntryPoint.this.newChannel(message.getChannel());
-						}
-
-						@Override
-						public @Nullable Channel.Thread getThread() {
-							return new Thread() {
-								@Override
-								public boolean isOwned() {
-									return message.getChannel().getName().contains("THREAD") && !message.getStartedThread().isOwner();
-								}
-
-								@Override
-								public @Nullable Guppy getOwner() {
-									return api.getGuppy(message.getStartedThread().getOwnerIdLong());
-								}
-
-								@Override
-								public @NotNull Channel getParent() {
-									return null;
-								}
-
-								@Override
-								public void delete() {
-
-								}
-
-								@Override
-								public long getId() {
-									return 0;
-								}
-
-								@Override
-								public Deployable<Guppy.Message> sendMessage(@NotNull String message1) {
-									return null;
-								}
-
-								@Override
-								public @NotNull String getName() {
-									return message.getStartedThread().getName();
-								}
-							};
-						}
-
-						@Override
-						public @NotNull Reaction[] getReactions() {
-							return message.getReactions().stream().map(GuppyEntryPoint.this::newReaction).toArray(Reaction[]::new);
-						}
-
-						@Override
-						public @NotNull EmbeddedMessage[] getAttached() {
-							return message.getEmbeds().stream().map(messageEmbed -> new EmbeddedMessage() {
-								@Override
-								public @Nullable String getHeader() {
-									return messageEmbed.getTitle();
-								}
-
-								@Override
-								public @Nullable Color getColor() {
-									return messageEmbed.getColor();
-								}
-
-								@Override
-								public @NotNull Image getImage() {
-									return () -> messageEmbed.getImage().getUrl();
-								}
-
-								@Override
-								public @Nullable Thumbnail getThumbnail() {
-									return () -> messageEmbed.getThumbnail().getUrl();
-								}
-
-								@Override
-								public @Nullable String getDescription() {
-									return messageEmbed.getDescription();
-								}
-
-								@Override
-								public @Nullable Guppy getAuthor() {
-									return api.getGuppy(messageEmbed.getAuthor().getName().split("#")[0], false);
-								}
-
-								@Override
-								public @Nullable Footer getFooter() {
-									return new Footer() {
-										@Override
-										public @Nullable String getIconUrl() {
-											return messageEmbed.getFooter().getIconUrl();
-										}
-
-										@Override
-										public @NotNull String getText() {
-											return messageEmbed.getFooter().getText();
-										}
-									};
-								}
-
-								@Override
-								public @NotNull Field[] getFields() {
-									return messageEmbed.getFields().stream().map(field -> new Field() {
-										@Override
-										public @NotNull String getValue() {
-											return field.getValue();
-										}
-
-										@Override
-										public boolean inline() {
-											return field.isInline();
-										}
-
-										@Override
-										public @NotNull String getName() {
-											return field.getName();
-										}
-									}).toArray(Field[]::new);
-								}
-							}).toArray(EmbeddedMessage[]::new);
-						}
-
-						@Override
-						public @Nullable Reaction getReaction(@NotNull String code) {
-							return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
-						}
-
-						@Override
-						public void add(@NotNull Reaction reaction) {
-
-						}
-
-						@Override
-						public void take(@NotNull Reaction reaction) {
-
-						}
-
-						@Override
-						public void delete() {
-
-						}
-					};
+					return wrapPublicMessage(message);
 				}
 				return null;
 			}
 
 			@Override
 			public @NotNull PantherCollection<Guppy.Message> getHistory() {
-				return t.getHistory().getRetrievedHistory().stream().map(message -> new Guppy.Message() {
+				return t.getHistory().retrievePast(100).submit().join().stream().map(message -> new Guppy.Message() {
 					@Override
 					public @NotNull String getText() {
 						return message.getContentRaw();
@@ -843,48 +740,13 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 
 					@Override
-					public @Nullable Channel getChannel() {
+					public @NotNull Channel getChannel() {
 						return GuppyEntryPoint.this.newChannel(message.getChannel());
 					}
 
 					@Override
-					public @Nullable Channel.Thread getThread() {
-						return new Thread() {
-							@Override
-							public boolean isOwned() {
-								return message.getChannel().getName().contains("THREAD") && !message.getStartedThread().isOwner();
-							}
-
-							@Override
-							public @Nullable Guppy getOwner() {
-								return api.getGuppy(message.getStartedThread().getOwnerIdLong());
-							}
-
-							@Override
-							public @NotNull Channel getParent() {
-								return null;
-							}
-
-							@Override
-							public void delete() {
-								message.getChannel().delete().queueAfter(2, TimeUnit.MILLISECONDS);
-							}
-
-							@Override
-							public long getId() {
-								return 0;
-							}
-
-							@Override
-							public Deployable<Guppy.Message> sendMessage(@NotNull String message) {
-								return null;
-							}
-
-							@Override
-							public @NotNull String getName() {
-								return message.getStartedThread().getName();
-							}
-						};
+					public Channel.@NotNull Thread getThread() {
+						return newThread(message.getChannel());
 					}
 
 					@Override
@@ -969,12 +831,22 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public void add(@NotNull Reaction reaction) {
-
+						Object r = reaction.get();
+						if (r instanceof Emoji) {
+							message.addReaction((Emoji) r).queueAfter(2, TimeUnit.MILLISECONDS);
+						} else if (r instanceof String) {
+							message.addReaction(Emoji.fromFormatted(r.toString())).queueAfter(2, TimeUnit.MILLISECONDS);
+						}
 					}
 
 					@Override
 					public void take(@NotNull Reaction reaction) {
-
+						Object r = reaction.get();
+						if (r instanceof Emoji) {
+							message.removeReaction((Emoji) r).queueAfter(2, TimeUnit.MILLISECONDS);
+						} else if (r instanceof String) {
+							message.removeReaction(Emoji.fromFormatted(r.toString())).queueAfter(2, TimeUnit.MILLISECONDS);
+						}
 					}
 
 					@Override
@@ -986,7 +858,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public boolean isPrivate() {
-				return false;
+				return t instanceof PrivateChannel;
 			}
 
 			@Override
@@ -996,7 +868,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public boolean isVoice() {
-				return false;
+				return t instanceof VoiceChannel;
 			}
 
 			@Override
@@ -1504,14 +1376,24 @@ public final class GuppyEntryPoint implements Vent.Host {
 				}
 
 				@Override
+				public @Nullable Command getContext(@NotNull String message) {
+					return getContext().stream().filter(c -> c.getMessage().equalsIgnoreCase(message)).findFirst().orElse(null);
+				}
+
+				@Override
 				public @NotNull PantherCollection<Command> getAll() {
 					return commandSupplier;
 				}
 
 				@Override
+				public @NotNull PantherCollection<Command> getContext() {
+					return getAll().stream().filter(c -> c.getType() == Command.Type.MULTI_MESSAGE || c.getType() == Command.Type.MULTI_USER).collect(PantherCollectors.toList());
+				}
+
+				@Override
 				public @NotNull Deployable<Void> refresh() {
 					return Deployable.of(() -> {
-						PantherCollection<SlashCommandData> data = new PantherList<>();
+						PantherCollection<CommandData> data = new PantherList<>();
 						for (Command c : getAll()) {
 							SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
 							for (Command.Option o : c.getOptions().get()) {
@@ -1523,6 +1405,10 @@ public final class GuppyEntryPoint implements Vent.Host {
 						}
 						// clear cache.
 						jda.updateCommands().queue();
+						for (Command action : getContext()) {
+							data.add(Commands.context(OptionTypeConverter.get(action.getType()), action.getName()));
+							data.add(Commands.message(action.getMessage()));
+						}
 						jda.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
 						return null;
 					}, 1);
