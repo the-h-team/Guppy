@@ -102,9 +102,9 @@ import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
-import net.dv8tion.jda.api.interactions.components.Modal;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
+import net.dv8tion.jda.api.interactions.modals.Modal;
 import net.dv8tion.jda.api.managers.RoleManager;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.ChannelAction;
@@ -124,7 +124,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 	boolean active;
 	final Logger logger;
 	final PantherCollection<Command> commandSupplier = new PantherSet<>();
-	public final PantherMap<Guppy, Modal> modals = new PantherEntryMap<>();
+	public final PantherMap<Long, Modal> modals = new PantherEntryMap<>();
 	ImmutablePantherCollection.Builder<Guppy> guppySupplier = ImmutablePantherCollection.builder();
 
 	public GuppyEntryPoint(Logger logger) {
@@ -270,7 +270,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			inputs.add(text.build());
 		}
 		Modal modal = Modal.create(dialogue.getId(), dialogue.getTitle())
-				.addActionRows(inputs.toArray(new ActionRow[0]))
+				.addActionRows(inputs.stream().map(ActionRow::of).toArray(ActionRow[]::new))
 				.build();
 		return modal;
 	}
@@ -1376,8 +1376,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 				}
 
 				@Override
-				public @Nullable Command getContext(@NotNull String message) {
-					return getContext().stream().filter(c -> c.getMessage().equalsIgnoreCase(message)).findFirst().orElse(null);
+				public @Nullable Command getContext(@NotNull String name) {
+					return getContext().stream().filter(c -> c.getName().equalsIgnoreCase(name) || c.getMessage().equalsIgnoreCase(name)).findFirst().orElse(null);
 				}
 
 				@Override
@@ -1406,8 +1406,12 @@ public final class GuppyEntryPoint implements Vent.Host {
 						// clear cache.
 						jda.updateCommands().queue();
 						for (Command action : getContext()) {
-							data.add(Commands.context(OptionTypeConverter.get(action.getType()), action.getName()));
-							data.add(Commands.message(action.getMessage()));
+							if (action.getType() == Command.Type.USER || action.getType() == Command.Type.MULTI_USER) {
+								data.add(Commands.context(OptionTypeConverter.get(action.getType()), action.getMessage()));
+							}
+							if (action.getType() == Command.Type.MESSAGE || action.getType() == Command.Type.MULTI_MESSAGE) {
+								data.add(Commands.message(action.getMessage()));
+							}
 						}
 						jda.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
 						return null;

@@ -40,7 +40,7 @@ import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent;
 import net.dv8tion.jda.api.events.user.update.UserUpdateOnlineStatusEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
-import net.dv8tion.jda.api.interactions.components.Modal;
+import net.dv8tion.jda.api.interactions.modals.Modal;
 import net.dv8tion.jda.api.interactions.modals.ModalMapping;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -103,6 +103,10 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 							event.getHook().sendMessageEmbeds(builder.build()).queue();
 						} else {
 							if (response.isNegated()) {
+								if (response.getDialogue() != null) {
+									Modal modal = entryPoint.newModal(response.getDialogue());
+									event.replyModal(entryPoint.modals.put(event.getUser().getIdLong(), modal)).queue();
+								} else
 								event.reply(response.get()).setEphemeral(false).queue();
 							} else {
 								event.reply(response.get()).setEphemeral(true).queue();
@@ -168,6 +172,10 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 						event.getHook().sendMessageEmbeds(builder.build()).queue();
 					} else {
 						if (response.isNegated()) {
+							if (response.getDialogue() != null) {
+								Modal modal = entryPoint.newModal(response.getDialogue());
+								event.replyModal(entryPoint.modals.put(event.getUser().getIdLong(), modal)).queue();
+							} else
 							event.reply(response.get()).setEphemeral(false).queue();
 						} else {
 							event.reply(response.get()).setEphemeral(true).queue();
@@ -184,7 +192,7 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 		if (m != null) {
 			Guppy match = api.getGuppy(m.getIdLong());
 			if (match != null) {
-				Modal modal = entryPoint.modals.get(match);
+				Modal modal = entryPoint.modals.get(match.getId());
 				if (modal != null) {
 					Dialogue d = new Dialogue() {
 						@Override
@@ -238,7 +246,7 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 						for (EmbeddedMessage.Field f : extra.getFields()) {
 							builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
 						}
-						event.getHook().sendMessageEmbeds(builder.build()).queue();
+						event.replyEmbeds(builder.build()).queue();
 					} else {
 						if (response.isNegated()) {
 							event.reply(response.get()).setEphemeral(false).queue();
@@ -289,7 +297,6 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 		final Message message = e.getMessage();
 		final Guppy guppy = entryPoint.getGuppy(e.getAuthor());
 		// This part is responsible for handling what happens when a user messages the bot.
-
 		if (e.isFromType(ChannelType.PRIVATE)) {
 			if (!e.getAuthor().isBot()) {
 				Guppy.Message m;
@@ -387,7 +394,10 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 				};
 				EphemeralResponse response = test.onExecuted(entryPoint.getGuppy(e.getUser()), variable);
 				if (response.isNegated()) {
-					e.deferReply().queue();
+					if (response.getDialogue() != null) {
+						Modal m = entryPoint.newModal(response.getDialogue());
+						e.replyModal(entryPoint.modals.put(e.getUser().getIdLong(), m)).queue();
+					} else
 					if (response.getExtra() != null) {
 						EmbeddedMessage m = response.getExtra();
 						EmbedBuilder builder = new EmbedBuilder();
@@ -413,9 +423,9 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 						for (EmbeddedMessage.Field f : m.getFields()) {
 							builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
 						}
-						e.getHook().sendMessageEmbeds(builder.build()).queue();
+						e.replyEmbeds(builder.build()).queue();
 					} else {
-						e.getHook().sendMessage(response.get().isEmpty() ? "***No info to display.***" : response.get()).queue();
+						e.reply(response.get().isEmpty() ? "***No info to display.***" : response.get()).queue();
 					}
 				} else {
 					e.reply(response.get()).setEphemeral(true).queue();
@@ -460,7 +470,10 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 					}
 				});
 				if (response.isNegated()) {
-					e.deferReply().queue();
+					if (response.getDialogue() != null) {
+						Modal m = entryPoint.newModal(response.getDialogue());
+						e.replyModal(entryPoint.modals.put(e.getUser().getIdLong(), m)).queue();
+					} else
 					if (response.getExtra() != null) {
 						EmbeddedMessage m = response.getExtra();
 						EmbedBuilder builder = new EmbedBuilder();
@@ -486,9 +499,9 @@ public final class JDAListenerAdapter extends ListenerAdapter {
 						for (EmbeddedMessage.Field f : m.getFields()) {
 							builder.addField(new MessageEmbed.Field(f.getName(), f.getValue(), f.inline()));
 						}
-						e.getHook().sendMessageEmbeds(builder.build()).queue();
+						e.replyEmbeds(builder.build()).queue();
 					} else {
-						e.getHook().sendMessage(response.get()).queue();
+						e.reply(response.get()).queue();
 					}
 				} else {
 					e.reply(response.get()).setEphemeral(true).queue();

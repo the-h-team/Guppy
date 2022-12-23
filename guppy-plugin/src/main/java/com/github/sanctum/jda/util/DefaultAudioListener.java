@@ -55,8 +55,8 @@ public final class DefaultAudioListener extends AudioEventAdapter implements Mus
 							});
 						} else controller.cleanup(TimeUnit.SECONDS.toMillis(20));
 					}
-				}
-			}
+				} else controller.cleanup(TimeUnit.SECONDS.toMillis(20));
+			} else controller.cleanup(TimeUnit.SECONDS.toMillis(20));
 		} else listener.onEnd(controller, track, result);
 	}
 

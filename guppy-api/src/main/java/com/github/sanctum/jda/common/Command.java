@@ -52,10 +52,25 @@ public interface Command {
 	}
 
 	enum Type {
+		/**
+		 * Signifies a user only context menu command.
+		 */
 		USER,
+		/**
+		 * Signifies a message only context menu command.
+		 */
 		MESSAGE,
+		/**
+		 * Signifies a slash command only.
+		 */
 		SLASH,
+		/**
+		 * Signifies either a user only context menu command or slash command.
+		 */
 		MULTI_USER,
+		/**
+		 * Signifies either a message only context menu command or slash command.
+		 */
 		MULTI_MESSAGE,
 		UNKNOWN;
 	}
