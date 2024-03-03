@@ -3,10 +3,18 @@ package com.github.sanctum.jda.common.content;
 import com.github.sanctum.jda.addon.DiscordClassLoader;
 import com.github.sanctum.jda.addon.DiscordExtensionManager;
 import com.github.sanctum.jda.common.api.ConsoleCommand;
+import com.github.sanctum.panther.file.JsonConfiguration;
+import com.github.sanctum.panther.util.AbstractJarScanner;
 import com.github.sanctum.panther.util.PantherLogger;
+import com.github.sanctum.panther.util.PantherString;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Enumeration;
+import java.util.jar.JarFile;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
 
 public class CommandAddon extends ConsoleCommand {
 	public CommandAddon() {

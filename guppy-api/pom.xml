@@ -123,13 +123,15 @@
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-containers</artifactId>
             <version>${panther.version}</version>
-            <scope>provided</scope>
+            <classifier>bundled</classifier>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-common</artifactId>
             <version>${panther.version}</version>
-            <scope>provided</scope>
+            <classifier>bundled</classifier>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 

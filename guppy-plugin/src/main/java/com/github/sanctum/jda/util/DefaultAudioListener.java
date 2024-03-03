@@ -16,8 +16,8 @@ public final class DefaultAudioListener extends AudioEventAdapter implements Mus
 	final MusicPlayer queue;
 	MusicPlayer.Listener listener;
 
-	public DefaultAudioListener(@NotNull MusicPlayer.Listener listener) {
-		this.queue = null;
+	public DefaultAudioListener(@NotNull MusicPlayer.Listener listener, @NotNull MusicPlayer player) {
+		this.queue = player;
 		this.listener = listener;
 	}
 

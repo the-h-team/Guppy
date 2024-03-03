@@ -2,8 +2,8 @@ package com.github.sanctum.jda.common;
 
 import com.github.sanctum.panther.container.PantherQueue;
 import java.nio.ByteBuffer;
-import javax.annotation.Nullable;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface MusicPlayer {
 

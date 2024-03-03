@@ -1,5 +1,7 @@
 package com.github.sanctum.jda;
 
+import com.github.sanctum.jda.addon.DiscordClassLoader;
+import com.github.sanctum.jda.addon.DiscordExtension;
 import com.github.sanctum.jda.addon.DiscordExtensionManager;
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.Command;
@@ -19,11 +21,11 @@ import com.github.sanctum.jda.loading.DockingAgent;
 import com.github.sanctum.jda.common.api.ConsoleCommand;
 import com.github.sanctum.jda.common.api.JDAInput;
 import com.github.sanctum.jda.common.content.CommandAddon;
-import com.github.sanctum.jda.common.content.MainPanel;
 import com.github.sanctum.jda.common.content.CommandStop;
 import com.github.sanctum.jda.util.DefaultAudioListener;
 import com.github.sanctum.jda.util.DefaultAudioSendHandler;
 import com.github.sanctum.jda.util.InvalidGuppyStateException;
+import com.github.sanctum.jda.util.MainThread;
 import com.github.sanctum.jda.util.OptionTypeConverter;
 import com.github.sanctum.panther.annotation.Comment;
 import com.github.sanctum.panther.annotation.Note;
@@ -41,8 +43,10 @@ import com.github.sanctum.panther.file.JsonConfiguration;
 import com.github.sanctum.panther.file.Node;
 import com.github.sanctum.panther.recursive.ServiceFactory;
 import com.github.sanctum.panther.recursive.ServiceLoader;
+import com.github.sanctum.panther.util.AbstractJarScanner;
 import com.github.sanctum.panther.util.Deployable;
 import com.github.sanctum.panther.util.PantherLogger;
+import com.github.sanctum.panther.util.PantherString;
 import com.github.sanctum.panther.util.ParsedTimeFormat;
 import com.github.sanctum.panther.util.SimpleAsynchronousTask;
 import com.github.sanctum.panther.util.TaskChain;
@@ -59,20 +63,25 @@ import java.io.BufferedReader;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.JarFile;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.security.auth.login.LoginException;
@@ -87,6 +96,7 @@ import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.MessageReaction;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.NewsChannel;
@@ -195,6 +205,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			}
 
 			@Override
+			public @Nullable Guppy getAuthor() {
+				return GuppyEntryPoint.this.getGuppy(message.getAuthor());
+			}
+
+			@Override
 			public @NotNull Channel getChannel() {
 				return newChannel(message.getChannel());
 			}
@@ -228,6 +243,19 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @Nullable Reaction getReaction(@NotNull String code) {
 				return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+			}
+
+			@Override
+			public int getTotalReactions() {
+				return message.getReactions().size();
+			}
+
+			@Override
+			public boolean hasMedia() {
+				return message.getAttachments().stream()
+						.map(Message.Attachment::getUrl)
+						.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
+						.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
 			}
 
 			@Override
@@ -285,6 +313,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public long getId() {
 				return message.getIdLong();
+			}
+
+			@Override
+			public @Nullable Guppy getAuthor() {
+				return GuppyEntryPoint.getInstance().getGuppy(message.getAuthor());
 			}
 
 			@Override
@@ -351,13 +384,40 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public @Nullable Guppy getAuthor() {
 						MessageEmbed.AuthorInfo info = messageEmbed.getAuthor();
+						String tag;
 						if (info != null) {
-							String tag = info.getName();
-							if (tag != null) {
-								return api.getGuppy(tag.split("#")[0], false);
+							tag = info.getName();
+						} else {
+							tag = messageEmbed.getTitle();
+						}
+						if (tag != null) {
+							Guppy g = api.getGuppy(tag.split("#")[0], false);
+							if (g == null) {
+								return api.getGuppy(tag.split("#")[1], false);
 							}
+							return g;
 						}
 						return null;
+					}
+
+					String stripAccents(final String input) {
+						if (input == null) {
+							return null;
+						}
+						final StringBuilder decomposed = new StringBuilder(Normalizer.normalize(input, Normalizer.Form.NFD));
+						for (int i = 0; i < decomposed.length(); i++) {
+							if (decomposed.charAt(i) == '\u0141') {
+								decomposed.setCharAt(i, 'L');
+							} else if (decomposed.charAt(i) == '\u0142') {
+								decomposed.setCharAt(i, 'l');
+							}else if (decomposed.charAt(i) == '\u00D8') {
+								decomposed.setCharAt(i, 'O');
+							}else if (decomposed.charAt(i) == '\u00F8') {
+								decomposed.setCharAt(i, 'o');
+							}
+						}
+						// Note that this doesn't correctly remove ligatures...
+						return Pattern.compile("\\p{InCombiningDiacriticalMarks}+").matcher(decomposed).replaceAll("");
 					}
 
 					@Override
@@ -400,6 +460,19 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public @Nullable Reaction getReaction(@NotNull String code) {
 				return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+			}
+
+			@Override
+			public int getTotalReactions() {
+				return message.getReactions().size();
+			}
+
+			@Override
+			public boolean hasMedia() {
+				return message.getAttachments().stream()
+						.map(Message.Attachment::getUrl)
+						.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
+						.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
 			}
 
 			@Override
@@ -728,7 +801,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public @NotNull PantherCollection<Guppy.Message> getHistory() {
-				return t.getHistory().retrievePast(100).submit().join().stream().map(message -> new Guppy.Message() {
+				MessageHistory history = MessageHistory.getHistoryFromBeginning(t).complete();
+				return history.getRetrievedHistory().stream().map(message -> new Guppy.Message() {
 					@Override
 					public @NotNull String getText() {
 						return message.getContentRaw();
@@ -737,6 +811,11 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public long getId() {
 						return message.getIdLong();
+					}
+
+					@Override
+					public @Nullable Guppy getAuthor() {
+						return GuppyEntryPoint.this.getGuppy(message.getAuthor());
 					}
 
 					@Override
@@ -827,6 +906,19 @@ public final class GuppyEntryPoint implements Vent.Host {
 					@Override
 					public @Nullable Reaction getReaction(@NotNull String code) {
 						return Arrays.stream(getReactions()).filter(r -> r.get().equals(code)).findFirst().orElse(null);
+					}
+
+					@Override
+					public int getTotalReactions() {
+						return message.getReactions().size();
+					}
+
+					@Override
+					public boolean hasMedia() {
+						return message.getAttachments().stream()
+								.map(Message.Attachment::getUrl)
+								.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
+								.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
 					}
 
 					@Override
@@ -1006,10 +1098,22 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return entryPoint;
 	}
 
+	@Override
+	public @NotNull String getName() {
+		return "Guppy";
+	}
+
+	@Override
+	public @NotNull File getDataFolder() {
+		return new File("Guppy/output");
+	}
+
 	class Api implements GuppyAPI {
 
 		boolean loaded = true;
 		private final CommandController commands;
+		private DiscordExtension.Header header;
+		private DiscordExtension.Footer footer;
 		MusicPlayer player = new MusicPlayer() {
 
 			private final AudioPlayer player;
@@ -1024,6 +1128,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			{
 				this.audioPlayerManager = new DefaultAudioPlayerManager();
 				this.player = audioPlayerManager.createPlayer();
+
 				this.controller = new Controller() {
 					@Override
 					public Track getPlaying() {
@@ -1155,7 +1260,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			@Override
 			public void setListener(@NotNull Listener listener) {
 				this.player.removeListener(this.listener);
-				this.player.addListener(this.listener = new DefaultAudioListener(listener));
+				this.player.addListener(this.listener = new DefaultAudioListener(listener, this));
 			}
 
 			@Override
@@ -1369,6 +1474,18 @@ public final class GuppyEntryPoint implements Vent.Host {
 		};
 
 		{
+			this.header = () -> new String[]{"---------------------------", "Loading properties...", "---------------------------"};
+			this.footer = new DiscordExtension.Footer() {
+				@Override
+				public @NotNull String[] get() {
+					return new String[]{"---------------------------"};
+				}
+
+				@Override
+				public DiscordExtension.@NotNull FooterFormat getFormat() {
+					return DiscordExtension.FooterFormat.MINECRAFT;
+				}
+			};
 			this.commands = new CommandController() {
 				@Override
 				public @Nullable Command get(@NotNull String label) {
@@ -1523,7 +1640,7 @@ public final class GuppyEntryPoint implements Vent.Host {
 			if (isMention) {
 				guppieStream = getGuppies().stream().filter(g -> g.getAsMention().equalsIgnoreCase(name));
 			} else {
-				guppieStream = getGuppies().stream().filter(g -> g.getName().equalsIgnoreCase(name));
+				guppieStream = getGuppies().stream().filter(g -> g.getName().equalsIgnoreCase(name) || g.getTag().split("#")[1].equalsIgnoreCase(name));
 			}
 			return guppieStream.findFirst().orElse(null);
 		}
@@ -1811,6 +1928,26 @@ public final class GuppyEntryPoint implements Vent.Host {
 		}
 
 		@Override
+		public @NotNull DiscordExtension.Header getHeader() {
+			return header;
+		}
+
+		@Override
+		public @NotNull DiscordExtension.Footer getFooter() {
+			return footer;
+		}
+
+		@Override
+		public void setHeader(DiscordExtension.@NotNull Header header) {
+			this.header = header;
+		}
+
+		@Override
+		public void setFooter(DiscordExtension.@NotNull Footer footer) {
+			this.footer = footer;
+		}
+
+		@Override
 		public @NotNull GuppyAPI setPlayer(@NotNull MusicPlayer player) {
 			this.player = player;
 			return this;
@@ -1822,42 +1959,66 @@ public final class GuppyEntryPoint implements Vent.Host {
 		return consoleCommands.values();
 	}
 
+	static void boot() {
+		final Configurable configurable = new JsonConfiguration(new File("common"), "config", null) {
+		};
+
+		AtomicReference<Activity> activity = new AtomicReference<>(Activity.watching("Aqua Teen Hunger Force"));
+		boot(configurable, activity, null);
+	}
+	static void boot(Configurable configurable, AtomicReference<Activity> activity, String string) {
+		if (string == null) {
+			if (getInstance() != null && getInstance().active) return;
+			String botmsg = configurable.getString("activity.msg");
+			switch (configurable.getString("activity.id")) {
+				case "1":
+					activity.set(Activity.watching(botmsg));
+					break;
+				case "2":
+					activity.set(Activity.playing(botmsg));
+					break;
+				case "3":
+					activity.set(Activity.listening(botmsg));
+					break;
+				case "4":
+					activity.set(Activity.competing(botmsg));
+					break;
+			}
+			enable(configurable.getNode("token").toPrimitive().getString(), activity.get());
+		}
+	}
+
 	@Comment("This method handles application stuff.")
 	public static void main(String[] args) {
-
+		System.out.println("[============================]");
+		System.out.println("  ▄▄ • ▄• ▄▌ ▄▄▄· ▄▄▄· ▄· ▄▌");
+		System.out.println(" ▐█ ▀ ▪█▪██▌▐█ ▄█▐█ ▄█▐█▪██▌");
+		System.out.println(" ▄█ ▀█▄█▌▐█▌ ██▀· ██▀·▐█▌▐█▪");
+		System.out.println(" ▐█▄▪▐█▐█▄█▌▐█▪·•▐█▪·• ▐█▀·.");
+		System.out.println(" ·▀▀▀▀  ▀▀▀ .▀   .▀     ▀ •");
+		System.out.println("[============================]");
 		System.out.println("Select a boot option:");
-		System.out.println(" ");
 		System.out.println("1. Start");
 		System.out.println("2. Setup");
 		System.out.println("3. Exit");
-		new Thread(() -> {
+		System.out.println("[============================]");
+		System.out.println("Automatic start after 15 seconds...");
+		System.out.println(" ");
+		AtomicBoolean active = new AtomicBoolean();
+		MainThread mainThread = new MainThread(() -> {
 			BufferedReader input = new BufferedReader(new InputStreamReader(System.in));
 			String line;
 			final Configurable configurable = new JsonConfiguration(new File("common"), "config", null) {
 			};
 
+			AtomicReference<Activity> activity = new AtomicReference<>(Activity.watching("Aqua Teen Hunger Force"));
+			// continuously update variable to new input then translate
 			try {
 				while ((line = input.readLine()) != null) {
-					Activity activity = Activity.watching("Aqua Teen Hunger Force");
+					active.set(true);
 					switch (line) {
 						case "1":
-							if (getInstance() != null && getInstance().active) return;
-							String botmsg = configurable.getString("activity.msg");
-							switch (configurable.getString("activity.id")) {
-								case "1":
-									activity = Activity.watching(botmsg);
-									break;
-								case "2":
-									activity = Activity.playing(botmsg);
-									break;
-								case "3":
-									activity = Activity.listening(botmsg);
-									break;
-								case "4":
-									activity = Activity.competing(botmsg);
-									break;
-							}
-							enable(configurable.getNode("token").toPrimitive().getString(), activity);
+							boot(configurable, activity, null);
 							break;
 						case "2":
 							System.out.println("Beginning setup...");
@@ -1892,16 +2053,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 										if (botMsg != null) {
 											switch (jdaInput.getActivity()) {
 												case "1":
-													activity = Activity.watching(botMsg);
+													activity.set(Activity.watching(botMsg));
 													break;
 												case "2":
-													activity = Activity.playing(botMsg);
+													activity.set(Activity.playing(botMsg));
 													break;
 												case "3":
-													activity = Activity.listening(botMsg);
+													activity.set(Activity.listening(botMsg));
 													break;
 												case "4":
-													activity = Activity.competing(botMsg);
+													activity.set(Activity.competing(botMsg));
 													break;
 											}
 											Node ac = configurable.getNode("activity");
@@ -1910,8 +2071,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 											configurable.save();
 											System.out.println("Setup complete.");
 											c.flush();
-											if (activity != null) {
-												enable(botToken, activity);
+											if (activity.get() != null) {
+												enable(botToken, activity.get());
 											} else
 												getConsoleCommands().stream().filter(cm -> cm.getLabel().equals("stop")).findFirst().ifPresent(cm -> cm.execute(new String[0]));
 										}
@@ -1932,12 +2093,25 @@ public final class GuppyEntryPoint implements Vent.Host {
 					}
 				}
 			} catch (IOException e) {
-				e.printStackTrace();
+
 			}
-		}).start();
+		});
+		TaskChain.getAsynchronous().wait(() -> {
+			if (!active.get()) {
+				System.out.println("No option selected, starting up normally.");
+				boot();
+				TaskChain.getAsynchronous().wait(() -> {
+					getConsoleCommands().stream().filter(c -> c.getLabel().equals("addon")).findFirst().ifPresent(c -> {
+						c.execute(new String[]{"find"});
+					});
+				}, TimeUnit.SECONDS.toMillis(3));
+			}
+		}, TimeUnit.SECONDS.toMillis(15));
+		mainThread.start();
 	}
 
 	static void enable(@NotNull String token, @NotNull Activity activity) {
+		final Date date = new Date();
 		Logger n = Logger.getLogger(Guppy.class.getSimpleName());
 		GuppyLoggerFormat formatter = new GuppyLoggerFormat();
 		ConsoleHandler consoleHandler = new ConsoleHandler();
@@ -1948,14 +2122,16 @@ public final class GuppyEntryPoint implements Vent.Host {
 		n.addHandler(consoleHandler);
 		PantherLogger.getInstance().setLogger(n);
 		Logger logger = PantherLogger.getInstance().getLogger();
-		logger.info("---------------------------");
-		logger.info("Loading properties...");
-		logger.info("---------------------------");
 		entryPoint = new GuppyEntryPoint(PantherLogger.getInstance().getLogger());
 		try {
 			getInstance().enable(new DockingAgent().consume(new DockingAgent.Procedure() {
 				@Override
 				public void onConstruct(@NotNull JDABuilder builder) {
+					final GuppyAPI api = GuppyAPI.getInstance();
+					final DiscordExtension.Header header = api.getHeader();
+					for (String s : header.get()) {
+						logger.info(s);
+					}
 					builder.setToken(token);
 					builder.enableIntents(Arrays.asList(GatewayIntent.values()));
 					builder.setActivity(activity);
@@ -1969,6 +2145,8 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 				@Override
 				public void onFinalize(@NotNull JDA instance) {
+					final GuppyAPI api = GuppyAPI.getInstance();
+					final DiscordExtension.Footer footer = api.getFooter();
 					PantherCollection<SlashCommandData> data = new PantherList<>();
 					for (Command c : GuppyAPI.getInstance().getCommands().getAll()) {
 						SlashCommandData slashCommand = Commands.slash(c.getLabel(), c.getDescription());
@@ -1982,10 +2160,42 @@ public final class GuppyEntryPoint implements Vent.Host {
 					// clear cache.
 					instance.updateCommands().queue();
 					instance.updateCommands().addCommands(data.stream().toArray(CommandData[]::new)).queue();
+					long now = System.currentTimeMillis() - date.getTime();
+					logger.info(String.format(footer.getFormat().get(), now));
+					for (String s : footer.get()) {
+						logger.info(s);
+					}
 				}
 			}));
-			logger.info("Bot Loaded.");
-			logger.info("---------------------------");
+			File directory = DiscordExtensionManager.getInstance().getAddonFolder();
+			File[] ar = directory.listFiles();
+			if (ar != null && ar.length > 0) {
+				for (File f : ar) {
+					if (f.isFile() && f.getName().endsWith(".jar")) {
+						JarFile jar = new JarFile(f);
+						jar.stream().forEach(z -> {
+							if (new PantherString(z.getName()).contains("options.txt")) {
+								try {
+									InputStream stream = jar.getInputStream(z);
+									AbstractJarScanner scanner = new AbstractJarScanner(stream) {
+									};
+									for (String key : scanner.scan()) {
+										if (key.contains("pre-load")) {
+											if (Boolean.parseBoolean(key.replace("pre-load:", ""))) {
+												logger.info("Pre-loading extension " + f.getName());
+												DiscordClassLoader loader = new DiscordClassLoader(f) {
+												};
+												DiscordExtensionManager.getInstance().load(loader.getMainClass());
+												break;
+											}
+										}
+									}
+								} catch (IOException ignored) {}
+							}
+						});
+					}
+				}
+			}
 		} catch (Exception e) {
 			logger.info("Bot loading failure, reason: " + e.getMessage());
 			logger.info("---------------------------");

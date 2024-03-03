@@ -38,6 +38,8 @@ public interface Guppy extends Identifiable, Mailable {
 
 		long getId();
 
+		@Nullable Guppy getAuthor();
+
 		@Nullable Channel getChannel();
 
 		@Nullable Channel.Thread getThread();
@@ -47,6 +49,10 @@ public interface Guppy extends Identifiable, Mailable {
 		@NotNull EmbeddedMessage[] getAttached();
 
 		@Nullable Reaction getReaction(@NotNull String code);
+
+		int getTotalReactions();
+
+		boolean hasMedia();
 
 		void add(@NotNull Reaction reaction);
 

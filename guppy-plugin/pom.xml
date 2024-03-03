@@ -68,7 +68,7 @@
         <dependency>
             <groupId>net.dv8tion</groupId>
             <artifactId>JDA</artifactId>
-            <version>5.0.0-beta.2</version>
+            <version>5.0.0-beta.20</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -87,7 +87,8 @@
             <groupId>com.github.the-h-team.Panther</groupId>
             <artifactId>panther-common</artifactId>
             <version>${panther.version}</version>
-            <scope>provided</scope>
+            <classifier>bundled</classifier>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.github.the-h-team.Panther</groupId>

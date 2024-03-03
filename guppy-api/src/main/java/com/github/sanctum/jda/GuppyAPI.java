@@ -1,5 +1,6 @@
 package com.github.sanctum.jda;
 
+import com.github.sanctum.jda.addon.DiscordExtension;
 import com.github.sanctum.jda.common.Channel;
 import com.github.sanctum.jda.common.CommandController;
 import com.github.sanctum.jda.common.Emoji;
@@ -207,6 +208,36 @@ public interface GuppyAPI extends Service {
 	 */
 	@NotNull MusicPlayer getPlayer();
 
+	/**
+	 * Get the header of information when the bot loads.
+	 *
+	 * @return The header for this bot.
+	 */
+	@NotNull DiscordExtension.Header getHeader();
+
+	/**
+	 * Get the footer of information when the bot has finished loading.
+	 *
+	 * @return The footer for this bot.
+	 */
+	@NotNull DiscordExtension.Footer getFooter();
+
+	/**
+	 * Set the header for this bot.
+	 * This contains strings that are used for loading information.
+	 *
+	 * @param header the header to use.
+	 */
+	void setHeader(@NotNull DiscordExtension.Header header);
+
+	/**
+	 * Set the footer for this bot.
+	 * This contains strings that used for loading completion information,
+	 * aswell as a format
+	 *
+	 * @param footer
+	 */
+	void setFooter(@NotNull DiscordExtension.Footer footer);
 
 	/**
 	 * Set the music player instance.
