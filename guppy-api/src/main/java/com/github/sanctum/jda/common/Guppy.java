@@ -52,7 +52,9 @@ public interface Guppy extends Identifiable, Mailable {
 
 		int getTotalReactions();
 
-		boolean hasMedia();
+		int getTotalReactions(String code);
+
+		boolean isPhotography();
 
 		void add(@NotNull Reaction reaction);
 

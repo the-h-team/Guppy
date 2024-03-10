@@ -247,15 +247,24 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public int getTotalReactions() {
-				return message.getReactions().size();
+				return message.getReactions().stream()
+						.mapToInt(MessageReaction::getCount)
+						.sum();
 			}
 
 			@Override
-			public boolean hasMedia() {
+			public int getTotalReactions(String code) {
+				return message.getReactions().stream()
+						.mapToInt(value -> value.getEmoji().getFormatted().equals(code) ? value.getCount() : 0)
+						.sum();
+			}
+
+			@Override
+			public boolean isPhotography() {
 				return message.getAttachments().stream()
 						.map(Message.Attachment::getUrl)
 						.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
-						.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
+						.anyMatch(ext -> new PantherString(ext).contains("png", "jpg", "jpeg", "gif", "bmp"));
 			}
 
 			@Override
@@ -464,15 +473,24 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 			@Override
 			public int getTotalReactions() {
-				return message.getReactions().size();
+				return message.getReactions().stream()
+						.mapToInt(MessageReaction::getCount)
+						.sum();
 			}
 
 			@Override
-			public boolean hasMedia() {
+			public int getTotalReactions(String code) {
+				return message.getReactions().stream()
+						.mapToInt(value -> value.getEmoji().getFormatted().equals(code) ? value.getCount() : 0)
+						.sum();
+			}
+
+			@Override
+			public boolean isPhotography() {
 				return message.getAttachments().stream()
 						.map(Message.Attachment::getUrl)
 						.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
-						.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
+						.anyMatch(ext -> new PantherString(ext).contains("png", "jpg", "jpeg"));
 			}
 
 			@Override
@@ -910,15 +928,24 @@ public final class GuppyEntryPoint implements Vent.Host {
 
 					@Override
 					public int getTotalReactions() {
-						return message.getReactions().size();
+						return message.getReactions().stream()
+								.mapToInt(MessageReaction::getCount)
+								.sum();
 					}
 
 					@Override
-					public boolean hasMedia() {
+					public int getTotalReactions(String code) {
+						return message.getReactions().stream()
+								.mapToInt(value -> value.getEmoji().getFormatted().equals(code) ? value.getCount() : 0)
+								.sum();
+					}
+
+					@Override
+					public boolean isPhotography() {
 						return message.getAttachments().stream()
 								.map(Message.Attachment::getUrl)
 								.map(url -> url.substring(url.lastIndexOf('.') + 1).toLowerCase())
-								.anyMatch(ext -> Arrays.asList("png", "jpg", "jpeg", "gif", "bmp").contains(ext));
+								.anyMatch(ext -> new PantherString(ext).contains("png", "jpg", "jpeg", "gif", "bmp"));
 					}
 
 					@Override
